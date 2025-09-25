@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Basic body reset */
+html, body, #root { height: 100%; }
+
+/* Brand palette: light blue, green, white */
+:root {
+  --brand-blue: #3B82F6;   /* Tailwind blue-500 (pleasant light blue) */
+  --brand-blue-600: #2563EB;
+  --brand-green: #10B981;  /* Tailwind emerald-500 */
+  --brand-green-600: #059669;
+  --brand-white: #F8FAFC;  /* slate-50 */
+}
+
+/* Background utilities */
+.bg-brand-blue { background-color: var(--brand-blue); }
+.bg-brand-green { background-color: var(--brand-green); }
+.bg-brand-white { background-color: var(--brand-white); }
+
+/* Text utilities */
+.text-brand-blue { color: var(--brand-blue); }
+.text-brand-green { color: var(--brand-green); }
+
+/* Border utilities */
+.border-brand-blue { border-color: var(--brand-blue); }
+.border-brand-green { border-color: var(--brand-green); }
+
+/* Button patterns */
+.btn-primary {
+  @apply inline-flex items-center justify-center px-4 py-2 rounded text-white;
+  background-color: var(--brand-blue);
+}
+.btn-primary:hover { background-color: var(--brand-blue-600); }
+
+.btn-success {
+  @apply inline-flex items-center justify-center px-3 py-2 rounded text-white;
+  background-color: var(--brand-green);
+}
+.btn-success:hover { background-color: var(--brand-green-600); }
+
+/* Chip pattern */
+.chip {
+  @apply text-xs px-2 py-0.5 rounded border;
+}
+
