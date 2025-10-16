@@ -1,36 +1,39 @@
-// Save tokens to local storage
+// Save tokens to session storage (combined object format)
 export const setAuthTokens = ({ access, refresh }) => {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('access_token', access);
-    if (refresh) {
-      localStorage.setItem('refresh_token', refresh);
-    }
+    const tokens = { access, refresh };
+    sessionStorage.setItem('authTokens', JSON.stringify(tokens));
   }
 };
 
-// Get tokens from local storage
+// Get tokens from session storage (combined object format)
 export const getAuthTokens = () => {
   if (typeof window !== 'undefined') {
-    return {
-      access: localStorage.getItem('access_token'),
-      refresh: localStorage.getItem('refresh_token'),
-    };
+    const storedTokens = sessionStorage.getItem('authTokens');
+    if (storedTokens) {
+      try {
+        return JSON.parse(storedTokens);
+      } catch (error) {
+        console.error('Error parsing stored tokens:', error);
+        return { access: null, refresh: null };
+      }
+    }
   }
   return { access: null, refresh: null };
 };
 
-// Clear tokens from local storage
+// Clear tokens from session storage
 export const clearAuthTokens = () => {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('authTokens');
   }
 };
 
 // Check if user is authenticated
 export const isAuthenticated = () => {
   if (typeof window === 'undefined') return false;
-  return !!localStorage.getItem('access_token');
+  const tokens = getAuthTokens();
+  return !!tokens.access;
 };
 
 // Check if user has vendor role
@@ -65,8 +68,8 @@ export const getUserFromToken = (token) => {
 // Get current user
 export const getCurrentUser = () => {
   if (typeof window === 'undefined') return null;
-  const { access } = getAuthTokens();
-  return getUserFromToken(access);
+  const tokens = getAuthTokens();
+  return getUserFromToken(tokens.access);
 };
 
 // Check if token is expired
@@ -80,12 +83,12 @@ export const isTokenExpired = (token) => {
 // Check if user needs to refresh token
 export const shouldRefreshToken = () => {
   if (typeof window === 'undefined') return false;
-  const { access, refresh } = getAuthTokens();
-  if (!access || !refresh) return false;
-  
-  const user = getUserFromToken(access);
+  const tokens = getAuthTokens();
+  if (!tokens.access || !tokens.refresh) return false;
+
+  const user = getUserFromToken(tokens.access);
   if (!user || !user.exp) return true;
-  
+
   // Refresh if token expires in less than 5 minutes
   const expiresIn = (user.exp * 1000 - Date.now()) / 1000 / 60;
   return expiresIn < 5;

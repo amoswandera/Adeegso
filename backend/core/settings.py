@@ -25,8 +25,11 @@ SECRET_KEY = 'django-insecure-+rxlu8(m6#r)24ghpev$dyvjdrtz#rdkom51w$8mq20z_i(b-%
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'testserver',  # For Django test client
+]
 
 # Application definition
 
@@ -92,7 +95,7 @@ CORS_ALLOW_CREDENTIALS = True
 # DRF + JWT
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        # 'rest_framework_simplejwt.authentication.JWTAuthentication',  # Temporarily disabled
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',  # Allow all users for now
@@ -156,6 +159,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Media files (user uploaded files)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Disable APPEND_SLASH to prevent issues with POST requests without trailing slashes
+APPEND_SLASH = False
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

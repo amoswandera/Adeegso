@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet, useOutletContext } from 'react-router-dom';
 import { FiMenu, FiX, FiHome, FiPackage, FiBarChart2, FiUsers, FiDollarSign, FiSettings, FiLogOut } from 'react-icons/fi';
+import { useAuth } from '../../contexts/AuthContext';
 import { vendorAPI } from '../../services/api';
 
 const VendorLayout = ({ children }) => {
@@ -10,8 +11,20 @@ const VendorLayout = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
-  // Check vendor approval status
+  // Function to refresh vendor data
+  const refreshVendorData = async () => {
+    try {
+      const profileResponse = await vendorAPI.getVendorProfile();
+      if (profileResponse && profileResponse.data) {
+        setVendorData(profileResponse.data);
+        setVendorApproved(profileResponse.data.approved);
+      }
+    } catch (error) {
+      console.error('Error refreshing vendor data:', error);
+    }
+  };
   const checkVendorApproval = async () => {
     // Skip approval check for testing
     return true;
@@ -19,20 +32,29 @@ const VendorLayout = ({ children }) => {
 
   useEffect(() => {
     const initializeVendor = async () => {
-      // Skip API calls - use mock data for testing
-      console.log('Vendor layout - API calls disabled for testing');
+      try {
+        console.log('Vendor layout - Making API calls');
+        // Get vendor profile
+        const profileResponse = await vendorAPI.getVendorProfile();
+        console.log('Profile response:', profileResponse);
 
-      setVendorApproved(true); // Always approved for testing
-
-      // Use mock vendor data
-      setVendorData({
-        name: 'Test Restaurant',
-        description: 'Delicious food delivered fast',
-        status: 'active',
-        approved: true
-      });
-
-      setLoading(false);
+        if (profileResponse && profileResponse.data) {
+          setVendorData(profileResponse.data);
+          setVendorApproved(profileResponse.data.approved);
+        }
+      } catch (error) {
+        console.error('Error fetching vendor data:', error);
+        // Fallback to mock data if API fails
+        setVendorApproved(true);
+        setVendorData({
+          name: 'Test Restaurant',
+          description: 'Delicious food delivered fast',
+          status: 'active',
+          approved: true
+        });
+      } finally {
+        setLoading(false);
+      }
     };
 
     initializeVendor();
@@ -40,8 +62,7 @@ const VendorLayout = ({ children }) => {
 
   const handleLogout = async () => {
     try {
-      // In a real app, you would call a logout API
-      localStorage.removeItem('authTokens');
+      await logout();
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
@@ -81,7 +102,7 @@ const VendorLayout = ({ children }) => {
   // }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -94,7 +115,7 @@ const VendorLayout = ({ children }) => {
 
       {/* Sidebar */}
       <div className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-auto flex-shrink-0
+        fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-auto lg:flex-shrink-0 lg:w-64
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
@@ -189,7 +210,7 @@ const VendorLayout = ({ children }) => {
         <main className="flex-1">
           <div className="py-6">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <Outlet context={{ vendorData, loading, vendorApproved }} />
+              <Outlet context={{ vendorData, loading, vendorApproved, refreshVendorData }} />
             </div>
           </div>
         </main>

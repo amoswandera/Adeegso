@@ -10,7 +10,7 @@ export const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     console.log('DEBUG: API Request Interceptor');
-    const tokens = localStorage.getItem('authTokens');
+    const tokens = sessionStorage.getItem('authTokens');
     if (tokens) {
       try {
         const parsedTokens = JSON.parse(tokens);

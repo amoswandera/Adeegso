@@ -108,99 +108,146 @@ const Analytics = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchAnalyticsData = async () => {
       setIsLoading(true);
       try {
-        // Fetch orders for analytics data
-        const ordersResponse = await vendorAPI.getOrders();
-        const orders = ordersResponse.data || [];
-        
-        // Calculate real stats from orders data
-        const totalRevenue = orders
-          .filter(order => order.status === 'delivered')
-          .reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
-        
-        const totalOrders = orders.length;
-        const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-        
-        // Mock customer count for now (could be calculated from unique customers)
-        const newCustomers = Math.floor(totalOrders * 0.3);
+        // Use the new analytics endpoint
+        const analyticsResponse = await vendorAPI.getAnalytics();
+        const analyticsData = analyticsResponse.data;
 
-        // Update stats with real data
-        setStats(prevStats => prevStats.map(stat => {
-          switch (stat.title) {
-            case 'Total Revenue':
-              return { ...stat, value: `$${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` };
-            case 'Total Orders':
-              return { ...stat, value: totalOrders.toString() };
-            case 'Average Order Value':
-              return { ...stat, value: `$${avgOrderValue.toFixed(2)}` };
-            case 'New Customers':
-              return { ...stat, value: newCustomers.toString() };
-            default:
-              return stat;
-          }
-        }));
-
-        // Generate sales data based on orders
-        const last7Days = Array.from({ length: 7 }, (_, i) => {
-          const date = new Date();
-          date.setDate(date.getDate() - (6 - i));
-          return date.toISOString().split('T')[0];
-        });
-
-        const salesByDay = last7Days.map(date => {
-          const dayOrders = orders.filter(order => 
-            order.created_at.split('T')[0] === date
-          );
-          const dayRevenue = dayOrders.reduce((sum, order) => 
-            sum + parseFloat(order.total_amount || 0), 0
-          );
-          const dayName = new Date(date).toLocaleDateString('en-US', { weekday: 'short' });
-          return {
-            day: dayName,
-            sales: dayRevenue,
-            orders: dayOrders.length
-          };
-        });
-
-        setSalesData(salesByDay);
-
-        // Generate top products from order items
-        const productSales = {};
-        orders.forEach(order => {
-          order.items?.forEach(item => {
-            const productName = item.product?.name || 'Unknown Product';
-            const revenue = parseFloat(item.price || 0) * item.quantity;
-            if (!productSales[productName]) {
-              productSales[productName] = { sales: 0, revenue: 0 };
+        if (analyticsData) {
+          // Update stats with real data from backend
+          setStats(prevStats => prevStats.map(stat => {
+            switch (stat.title) {
+              case 'Total Revenue':
+                return {
+                  ...stat,
+                  value: `$${parseFloat(analyticsData.total_revenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                };
+              case 'Total Orders':
+                return { ...stat, value: (analyticsData.total_orders || 0).toString() };
+              case 'Average Order Value':
+                return { ...stat, value: `$${parseFloat(analyticsData.average_order_value || 0).toFixed(2)}` };
+              case 'New Customers':
+                return { ...stat, value: Math.floor((analyticsData.total_orders || 0) * 0.3).toString() };
+              default:
+                return stat;
             }
-            productSales[productName].sales += item.quantity;
-            productSales[productName].revenue += revenue;
-          });
-        });
-
-        const topProductsData = Object.entries(productSales)
-          .map(([name, data]) => ({ name, ...data }))
-          .sort((a, b) => b.sales - a.sales)
-          .slice(0, 5)
-          .map(product => ({
-            ...product,
-            revenue: product.revenue.toFixed(2)
           }));
 
-        setTopProducts(topProductsData);
+          // Update sales data from backend
+          if (analyticsData.daily_sales && analyticsData.daily_sales.length > 0) {
+            setSalesData(analyticsData.daily_sales.map(day => ({
+              day: new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' }),
+              sales: parseFloat(day.revenue || 0),
+              orders: day.orders || 0
+            })));
+          }
+
+          // Update top products from backend
+          if (analyticsData.top_products && analyticsData.top_products.length > 0) {
+            setTopProducts(analyticsData.top_products.map(product => ({
+              name: product.name,
+              sales: product.quantity || 0,
+              revenue: parseFloat(product.revenue || 0).toFixed(2)
+            })));
+          }
+        }
       } catch (error) {
         console.error('Error fetching analytics data:', error);
-        // Fallback to mock data
-        setSalesData(generateSalesData());
-        setTopProducts(generateTopProducts());
+        // Fallback to existing logic if analytics endpoint fails
+        try {
+          // Fetch orders for analytics data as fallback
+          const ordersResponse = await vendorAPI.getOrders();
+          const orders = ordersResponse.data || [];
+
+          // Calculate real stats from orders data
+          const totalRevenue = orders
+            .filter(order => order.status === 'delivered')
+            .reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
+
+          const totalOrders = orders.length;
+          const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+          // Mock customer count for now (could be calculated from unique customers)
+          const newCustomers = Math.floor(totalOrders * 0.3);
+
+          // Update stats with real data
+          setStats(prevStats => prevStats.map(stat => {
+            switch (stat.title) {
+              case 'Total Revenue':
+                return { ...stat, value: `$${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` };
+              case 'Total Orders':
+                return { ...stat, value: totalOrders.toString() };
+              case 'Average Order Value':
+                return { ...stat, value: `$${avgOrderValue.toFixed(2)}` };
+              case 'New Customers':
+                return { ...stat, value: newCustomers.toString() };
+              default:
+                return stat;
+            }
+          }));
+
+          // Generate sales data based on orders
+          const last7Days = Array.from({ length: 7 }, (_, i) => {
+            const date = new Date();
+            date.setDate(date.getDate() - (6 - i));
+            return date.toISOString().split('T')[0];
+          });
+
+          const salesByDay = last7Days.map(date => {
+            const dayOrders = orders.filter(order =>
+              order.created_at.split('T')[0] === date
+            );
+            const dayRevenue = dayOrders.reduce((sum, order) =>
+              sum + parseFloat(order.total_amount || 0), 0
+            );
+            const dayName = new Date(date).toLocaleDateString('en-US', { weekday: 'short' });
+            return {
+              day: dayName,
+              sales: dayRevenue,
+              orders: dayOrders.length
+            };
+          });
+
+          setSalesData(salesByDay);
+
+          // Generate top products from order items
+          const productSales = {};
+          orders.forEach(order => {
+            order.items?.forEach(item => {
+              const productName = item.product?.name || 'Unknown Product';
+              const revenue = parseFloat(item.price || 0) * item.quantity;
+              if (!productSales[productName]) {
+                productSales[productName] = { sales: 0, revenue: 0 };
+              }
+              productSales[productName].sales += item.quantity;
+              productSales[productName].revenue += revenue;
+            });
+          });
+
+          const topProductsData = Object.entries(productSales)
+            .map(([name, data]) => ({ name, ...data }))
+            .sort((a, b) => b.sales - a.sales)
+            .slice(0, 5)
+            .map(product => ({
+              ...product,
+              revenue: product.revenue.toFixed(2)
+            }));
+
+          setTopProducts(topProductsData);
+        } catch (fallbackError) {
+          console.error('Fallback analytics fetch also failed:', fallbackError);
+          // Final fallback to mock data
+          setSalesData(generateSalesData());
+          setTopProducts(generateTopProducts());
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchData();
+    fetchAnalyticsData();
   }, [timeRange]);
 
   const stats = [

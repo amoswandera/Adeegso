@@ -7,8 +7,8 @@ console.log('API Service - Environment Variables:', {
   VITE_BACKEND_URL: import.meta.env.VITE_BACKEND_URL
 });
 
-// Use Vite environment variables with fallbacks
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// Use Vite environment variables with fallbacks - use relative URLs for proxy
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 // Create axios instance with default config
@@ -23,6 +23,9 @@ const api = axios.create({
   withCredentials: true, // Important for cookies, authorization headers with HTTPS
   validateStatus: (status) => status < 500, // Reject only if the status code is greater than or equal to 500
 });
+
+// Export the axios instance as default
+export default api;
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
@@ -92,7 +95,7 @@ api.interceptors.response.use(
 
 // Auth API
 export const authAPI = {
-  login: (credentials) => api.post('/auth/token/', credentials),
+  login: (credentials) => api.post('/auth/login/', credentials),
   register: (userData) => api.post('/auth/register/', userData),
   getProfile: () => api.get('/auth/me/'),
   updateProfile: (data) => api.patch('/auth/me/', data),
@@ -100,6 +103,7 @@ export const authAPI = {
   requestPasswordReset: (email) => api.post('/auth/password/reset/', { email }),
   resetPassword: (data) => api.post('/auth/password/reset/confirm/', data),
   refresh: (refreshToken) => api.post('/auth/refresh/', refreshToken),
+  logout: () => api.get('/auth/logout/'),
   getUsers: (params) => api.get('/users/', { params }),
   get: (url, config) => api.get(url, config), // Add generic get method
   post: (url, data, config) => api.post(url, data, config), // Add generic post method
@@ -138,9 +142,9 @@ export const setOrderStatus = async (orderId, status) => {
 // Vendor API
 export const vendorAPI = {
   getVendorProfile: () => api.get('/vendor/profile/'),
-  updateVendorProfile: (data) => api.patch('/vendor/profile/', data),
+  updateVendorProfile: (data) => api.put('/vendor/profile/', data),
 
-  // Vendor Products
+  // Vendor Products - Use vendor-specific endpoints
   getProducts: (params) => api.get('/vendor/products/', { params }),
   createProduct: (data) => {
     const formData = new FormData();
@@ -170,7 +174,7 @@ export const vendorAPI = {
         formData.append(key, data[key]);
       }
     });
-    return api.patch(`/vendor/products/${id}/`, formData, {
+    return api.put(`/vendor/products/${id}/`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -227,13 +231,13 @@ class WebSocketService {
 
   connect() {
     if (this.socket) return;
-    
+
     const { access } = getAuthTokens();
     if (!access) return;
 
     // Use the configured WebSocket URL
     const wsUrl = this.wsUrl;
-    
+
     this.socket = new WebSocket(wsUrl);
 
     this.socket.onopen = () => {
@@ -274,7 +278,7 @@ class WebSocketService {
         this.callbacks.onOrderUpdated.forEach(callback => callback(data.order));
         break;
       case 'order_status_changed':
-        this.callbacks.onOrderStatusChanged.forEach(callback => 
+        this.callbacks.onOrderStatusChanged.forEach(callback =>
           callback(data.order_id, data.status)
         );
         break;
@@ -296,4 +300,13 @@ class WebSocketService {
     }
   }
 }
+
+// Rider Delivery API
+export const riderDeliveryAPI = {
+  getAvailableDeliveries: () => api.get('/rider/deliveries/'),
+  getMyDeliveries: () => api.get('/rider/deliveries/'), // This will be filtered by rider permissions
+  acceptDelivery: (deliveryId) => api.post(`/rider/deliveries/${deliveryId}/accept/`),
+  updateDeliveryStatus: (deliveryId, status) => api.post(`/rider/deliveries/${deliveryId}/update_status/`, { status }),
+  getDeliveryDetails: (deliveryId) => api.get(`/rider/deliveries/${deliveryId}/`),
+};
 

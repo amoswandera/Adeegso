@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Account, Vendor, Rider
+from .models import Account, Vendor, Rider, Wallet, WalletTransaction
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -150,7 +150,11 @@ class RiderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Rider
-        fields = ["id", "user", "user_id", "verified", "wallet_balance", "created_at", "updated_at"]
+        fields = [
+            "id", "user", "user_id", "verified",
+            "current_latitude", "current_longitude", "last_location_update", "is_online",
+            "wallet_balance", "created_at", "updated_at"
+        ]
         read_only_fields = ["created_at", "updated_at"]
 
     def create(self, validated_data):
@@ -163,12 +167,19 @@ class RiderSerializer(serializers.ModelSerializer):
             validated_data["user"] = user
         return super().create(validated_data)
 
-    def update(self, instance, validated_data):
-        user_id = validated_data.pop("user_id", None)
-        if user_id is not None:
-            try:
-                user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                raise serializers.ValidationError({"user_id": "User not found"})
-            instance.user = user
-        return super().update(instance, validated_data)
+class WalletSerializer(serializers.ModelSerializer):
+    rider = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = Wallet
+        fields = ["id", "rider", "balance", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at"]
+
+
+class WalletTransactionSerializer(serializers.ModelSerializer):
+    wallet = WalletSerializer(read_only=True)
+
+    class Meta:
+        model = WalletTransaction
+        fields = ["id", "wallet", "amount", "transaction_type", "description", "order", "created_at"]
+        read_only_fields = ["created_at"]

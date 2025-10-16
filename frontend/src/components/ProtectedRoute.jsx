@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
  * 
  * This component protects routes that require authentication and optionally specific user roles.
  * If the user is not authenticated, they will be redirected to the login page.
- * If the user doesn't have the required role, they will be redirected to the home page.
+ * If the user doesn't have the required role, they will be redirected to the appropriate dashboard.
  * 
  * @param {Object} props - Component props
  * @param {React.ReactNode} props.children - Child components to render if authenticated
@@ -20,7 +20,7 @@ const ProtectedRoute = ({
   requiredRole = null, 
   isOutlet = false 
 }) => {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, user, loading, hasRole } = useAuth();
   const location = useLocation();
 
   // Show loading state while checking auth
@@ -32,17 +32,16 @@ const ProtectedRoute = ({
     );
   }
 
-  // For now, allow access to all pages without authentication
-  // if (!isAuthenticated) {
-  //   return <Navigate to="/login" state={{ from: location }} replace />;
-  // }
+  // If not authenticated, redirect to login with return URL
+  if (!isAuthenticated) {
+    return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} state={{ from: location }} replace />;
+  }
 
-  // Check if user has the required role
-  // if (requiredRole && user?.role !== requiredRole) {
-  //   // Optionally, you can show an unauthorized message here
-  //   console.warn(`User does not have the required role: ${requiredRole}`);
-  //   return <Navigate to="/" replace />;
-  // }
+  // If specific role is required and user doesn't have it, redirect to appropriate page
+  if (requiredRole && !hasRole(requiredRole)) {
+    const redirectPath = getRedirectPath(user?.role);
+    return <Navigate to={redirectPath} replace />;
+  }
 
   // If using with React Router v6 Outlet
   if (isOutlet) {
@@ -51,6 +50,20 @@ const ProtectedRoute = ({
 
   // Otherwise render children
   return children;
+};
+
+// Helper function to get redirect path based on role
+const getRedirectPath = (role) => {
+  switch (role) {
+    case 'admin':
+      return '/admin';
+    case 'vendor':
+      return '/vendor/dashboard';
+    case 'rider':
+      return '/rider';
+    default:
+      return '/';
+  }
 };
 
 /**

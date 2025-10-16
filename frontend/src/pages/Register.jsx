@@ -54,7 +54,7 @@ const Register = () => {
 
     // Validate user type selection
     if (!formData.userType) {
-      setError('Please select whether you want to register as a customer or vendor.');
+      setError('Please select whether you want to register as a customer, vendor, or rider.');
       setLoading(false);
       return;
     }
@@ -79,12 +79,12 @@ const Register = () => {
       phone_number: formData.phone,
       first_name: formData.firstName,
       last_name: formData.lastName,
-      role: formData.userType  // This will be 'customer' or 'vendor'
+      role: formData.userType  // This will be 'customer', 'vendor', or 'rider'
     };
 
     try {
       await authAPI.register(registrationData);
-      setMessage(`${formData.userType === 'vendor' ? 'Vendor account' : 'Account'} created successfully! Please log in.`);
+      setMessage(`${formData.userType.charAt(0).toUpperCase() + formData.userType.slice(1)} account created successfully! Please log in.`);
 
       // Store user type for post-registration handling
       localStorage.setItem('pendingRegistration', JSON.stringify({
@@ -302,6 +302,17 @@ const Register = () => {
                     className="form-radio h-4 w-4 text-brand-blue"
                   />
                   <span className="ml-2 text-sm text-gray-700">Restaurant Vendor</span>
+                </label>
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    name="userType"
+                    value="rider"
+                    checked={formData.userType === 'rider'}
+                    onChange={handleChange}
+                    className="form-radio h-4 w-4 text-brand-blue"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Rider</span>
                 </label>
               </div>
             </div>

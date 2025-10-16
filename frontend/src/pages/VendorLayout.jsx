@@ -14,10 +14,14 @@ export default function VendorLayout() {
 
   const isActive = (path) => location.pathname.startsWith(path)
 
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   // Fetch vendor data
   useEffect(() => {

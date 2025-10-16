@@ -16,31 +16,52 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from apps.catalog.views import ProductViewSet
-from apps.accounts.views import RiderViewSet, UserViewSet, VendorViewSet, register_user, user_profile, debug_users
-from apps.orders.views import OrderViewSet
+from apps.accounts.views import RiderViewSet, UserViewSet, VendorViewSet, VendorProductViewSet, register_user, user_profile, debug_users, login_user, refresh_token, logout_user, get_current_user
+from apps.orders.views import OrderViewSet, RiderDeliveryViewSet
 from apps.payments.views import PaymentViewSet
 from apps.accounts.cart_views import get_cart, update_cart
-from apps.accounts.token_serializers import CustomTokenObtainPairView
-from rest_framework_simplejwt.views import TokenRefreshView
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+import json
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+
+# Import the custom admin site
+from .admin import marketplace_admin
 
 router = DefaultRouter()
 router.register(r"products", ProductViewSet, basename="product")
+router.register(r"vendor/products", VendorProductViewSet, basename="vendor-product")
 router.register(r"vendors", VendorViewSet, basename="vendor")
 router.register(r"riders", RiderViewSet, basename="rider")
+router.register(r"rider/deliveries", RiderDeliveryViewSet, basename="rider-delivery")
 router.register(r"users", UserViewSet, basename="user")
 router.register(r"orders", OrderViewSet, basename="order")
 router.register(r"payments", PaymentViewSet, basename="payment")
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/', include(router.urls)),
-    path('api/auth/token/', csrf_exempt(CustomTokenObtainPairView.as_view()), name='token_obtain_pair'),
-    path('api/auth/refresh/', csrf_exempt(TokenRefreshView.as_view()), name='token_refresh'),
-    path('api/auth/register/', register_user, name='register_user'),
-    path('api/auth/me/', user_profile, name='user_profile'),
+    path('admin/', marketplace_admin.urls),  # Use custom admin site
+    path('api/', include(router.urls)),  # Add router URLs
+    path('api/vendor/profile/', VendorViewSet.as_view({'get': 'profile'}), name='vendor-profile'),
+    path('api/vendor/analytics/', VendorViewSet.as_view({'get': 'analytics'}), name='vendor-analytics'),
+    path('api/vendor/earnings/', VendorViewSet.as_view({'get': 'earnings'}), name='vendor-earnings'),
+    # Authentication endpoints
+    path('api/auth/login/', login_user, name='login'),
+    path('api/auth/register/', register_user, name='register'),
+    path('api/auth/refresh/', refresh_token, name='refresh_token'),
+    path('api/auth/logout/', logout_user, name='logout'),
+    path('api/auth/me/', get_current_user, name='current_user'),
     path('api/auth/debug/users/', debug_users, name='debug_users'),  # Temporary debug endpoint
     path('api/cart/', get_cart, name='get_cart'),
+    path('api/cart/update/', update_cart, name='update_cart'),
 ]
+
+# Serve media files during development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

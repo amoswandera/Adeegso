@@ -10,18 +10,6 @@ export default function Login() {
   const navigate = useNavigate()
   const { login } = React.useContext(AuthContext)
 
-  // Set default credentials based on role
-  React.useEffect(() => {
-    const role = searchParams.get('role')
-    if (role === 'vendor') {
-      setUsername('vendor1')
-      setPassword('vendor123')
-    } else {
-      setUsername('admin1')
-      setPassword('admin123')
-    }
-  }, [searchParams])
-
   const onSubmit = async (e) => {
     e.preventDefault()
     setError('')
@@ -41,14 +29,6 @@ export default function Login() {
       <h1 className="text-xl font-semibold mb-4">
         {searchParams.get('role') === 'vendor' ? 'Vendor Login' : 'Login'}
       </h1>
-
-      {searchParams.get('role') === 'vendor' && (
-        <div className="mb-4 p-3 bg-blue-50 text-blue-800 text-sm rounded">
-          <strong>Test Vendor Credentials:</strong><br />
-          Username: vendor1<br />
-          Password: vendor123
-        </div>
-      )}
 
       <form onSubmit={onSubmit} className="space-y-3">
         <input id="username" name="username" value={username} onChange={e=>setUsername(e.target.value)} placeholder="Username" className="w-full border p-2 rounded" autoComplete="username" />

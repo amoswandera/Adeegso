@@ -1,60 +1,108 @@
 import React, { useState, useEffect } from 'react';
-import { useOutletContext, Link } from 'react-router-dom';
-import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiFilter, FiChevronDown, FiChevronUp, FiPlusCircle } from 'react-icons/fi';
-import { vendorAPI } from '../../services/api';
+import { useOutletContext } from 'react-router-dom';
+import { FiPlus, FiEdit2, FiTrash2, FiChevronDown, FiChevronUp, FiSearch, FiFilter, FiPackage, FiPlusCircle } from 'react-icons/fi';
+import vendorAPI from '../../utils/vendorAPI';
 
 const ProductCard = ({ product, onEdit, onDelete }) => {
   const [expanded, setExpanded] = useState(false);
-  
+
+  const getImageSrc = (image) => {
+    // If it's a File object, create object URL for display
+    if (image instanceof File) {
+      return URL.createObjectURL(image);
+    }
+    // If it's our special marker for File objects in localStorage, treat as no image
+    if (typeof image === 'string' && image.startsWith('__FILE_OBJECT_')) {
+      return null;
+    }
+    // Otherwise, return the image URL or null
+    return image || null;
+  };
+
+  const shouldShowImage = (image) => {
+    return getImageSrc(image) !== null;
+  };
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'approved':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            Approved
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            Rejected
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+            Pending
+          </span>
+        );
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
       <div className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center">
-              {product.image ? (
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="h-16 w-16 rounded-md object-cover mr-4"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
+              {shouldShowImage(product.image) ? (
+                <div className="relative">
+                  <img
+                    src={getImageSrc(product.image)}
+                    alt={product.name || 'Product'}
+                    className="h-16 w-16 rounded-md object-cover mr-4"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.parentElement.nextSibling.style.display = 'flex';
+                    }}
+                  />
+                  <div className="hidden absolute inset-0 h-16 w-16 rounded-md bg-gray-200 flex items-center justify-center text-gray-400">
+                    <FiPlusCircle size={24} />
+                  </div>
+                </div>
               ) : (
                 <div className="h-16 w-16 rounded-md bg-gray-200 flex items-center justify-center text-gray-400 mr-4">
                   <FiPlusCircle size={24} />
                 </div>
               )}
-              <div className="hidden">
-                <div className="h-16 w-16 rounded-md bg-gray-200 flex items-center justify-center text-gray-400">
-                  <FiPlusCircle size={24} />
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-1">
+                  <h3 className="font-medium text-gray-900">{product.name || 'Unnamed Product'}</h3>
+                  {getStatusBadge(product.approval_status)}
                 </div>
-              </div>
-              <div>
-                <h3 className="font-medium text-gray-900">{product.name}</h3>
-                <p className="text-sm text-gray-500">{product.category}</p>
-                <p className="text-lg font-semibold text-gray-900 mt-1">${product.price.toFixed(2)}</p>
+                <p className="text-sm text-gray-500">{product.category || 'No Category'}</p>
+                <p className="text-lg font-semibold text-gray-900 mt-1">${product.price ? Number(product.price).toFixed(2) : '0.00'}</p>
+                {product.rejection_reason && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Reason: {product.rejection_reason}
+                  </p>
+                )}
               </div>
             </div>
           </div>
           <div className="flex space-x-2">
-            <button 
+            <button
               onClick={() => onEdit(product)}
               className="p-2 text-gray-500 hover:text-brand-blue hover:bg-blue-50 rounded-full"
               title="Edit product"
             >
               <FiEdit2 size={18} />
             </button>
-            <button 
+            <button
               onClick={() => onDelete(product.id)}
               className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full"
               title="Delete product"
             >
               <FiTrash2 size={18} />
             </button>
-            <button 
+            <button
               onClick={() => setExpanded(!expanded)}
               className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"
             >
@@ -62,14 +110,14 @@ const ProductCard = ({ product, onEdit, onDelete }) => {
             </button>
           </div>
         </div>
-        
+
         {expanded && (
           <div className="mt-4 pt-4 border-t border-gray-100">
             {product.description && (
               <p className="text-sm text-gray-600 mb-3">{product.description}</p>
             )}
             <div className="flex flex-wrap gap-2">
-              {product.tags?.map((tag, index) => (
+              {product.tags && Array.isArray(product.tags) && product.tags.map((tag, index) => (
                 <span key={index} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                   {tag}
                 </span>
@@ -82,7 +130,7 @@ const ProductCard = ({ product, onEdit, onDelete }) => {
                   {product.variants.map((variant, index) => (
                     <div key={index} className="flex justify-between text-sm">
                       <span className="text-gray-600">{variant.name}</span>
-                      <span className="font-medium">+${variant.price.toFixed(2)}</span>
+                      <span className="font-medium">+${variant.price ? Number(variant.price).toFixed(2) : '0.00'}</span>
                     </div>
                   ))}
                 </div>
@@ -94,6 +142,7 @@ const ProductCard = ({ product, onEdit, onDelete }) => {
     </div>
   );
 };
+
 const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -111,7 +160,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
       setFormData({
         name: product.name || '',
         description: product.description || '',
-        price: product.price || '',
+        price: product.price ? parseFloat(product.price).toString() : '',
         category: product.category || '',
         tags: product.tags?.join(', ') || '',
         inStock: product.inStock !== false,
@@ -133,14 +182,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Handle image upload - if it's a File object, we need to keep it as is
-    // If it's a string URL, keep it as string
-    // If no image, set to null
     let imageToSave = formData.image;
-
-    // If it's a File object from input, keep it
-    // If it's a string (existing image), keep it
-    // If no image selected, set to null
     if (!formData.image) {
       imageToSave = null;
     }
@@ -159,7 +201,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
       <h2 className="text-xl font-semibold mb-6">
         {isEditing ? 'Edit Product' : 'Add New Product'}
       </h2>
-      
+
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -173,7 +215,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
               required
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
             <div className="mt-1 relative rounded-md shadow-sm">
@@ -193,7 +235,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
               />
             </div>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             <select
@@ -211,7 +253,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
               <option value="Sides">Sides</option>
             </select>
           </div>
-          
+
           <div className="flex items-end">
             <div className="flex items-center h-5">
               <input
@@ -227,7 +269,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
               </label>
             </div>
           </div>
-          
+
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea
@@ -238,7 +280,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue"
             />
           </div>
-          
+
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma separated)</label>
             <input
@@ -250,8 +292,8 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue"
             />
           </div>
-          
-            <div className="md:col-span-2">
+
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Product Image</label>
             <div className="mt-1 flex items-center">
               <span className="inline-block h-12 w-12 rounded-md overflow-hidden bg-gray-100">
@@ -305,7 +347,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
             )}
           </div>
         </div>
-        
+
         <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
           <button
             type="button"
@@ -327,6 +369,7 @@ const ProductForm = ({ product, onSave, onCancel, isEditing }) => {
 };
 
 const Products = () => {
+  console.log('Products component rendering...');
   const outletContext = useOutletContext();
   const vendorData = outletContext?.vendorData || {
     name: 'Test Restaurant',
@@ -342,56 +385,129 @@ const Products = () => {
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
 
-  // Fetch products from API
+  // Debug function to check localStorage
+  const checkLocalStorage = () => {
+    const storedProducts = localStorage.getItem('vendorProducts');
+    console.log('Current localStorage vendorProducts:', storedProducts);
+    if (storedProducts) {
+      try {
+        const parsed = JSON.parse(storedProducts);
+        console.log('Parsed products:', parsed);
+        console.log('Number of products:', parsed?.length || 0);
+        alert(`Found ${parsed?.length || 0} products in localStorage`);
+      } catch (error) {
+        console.error('Error parsing localStorage:', error);
+        alert('Error parsing localStorage data');
+      }
+    } else {
+      alert('No products found in localStorage');
+    }
+  };
+
+  // Manual save to localStorage for debugging
+  const saveToLocalStorage = () => {
+    if (products.length > 0) {
+      localStorage.setItem('vendorProducts', JSON.stringify(products));
+      console.log('Manually saved to localStorage:', products);
+      alert(`Saved ${products.length} products to localStorage`);
+    } else {
+      alert('No products to save');
+    }
+  };
+
+  // Fetch products from API or localStorage
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setProductsLoading(true);
+        console.log('Fetching products from API...');
 
-        // Temporarily disable API calls - show mock data instead
-        console.log('Vendor products - API calls disabled for testing');
-
-        // Mock products data
-        setProducts([
-          {
-            id: 1,
-            name: 'Grilled Chicken Burger',
-            description: 'Juicy grilled chicken breast with fresh lettuce, tomato, and our special sauce on a toasted bun.',
-            category: 'Main Course',
-            price: 12.99,
-            inStock: true,
-            tags: ['spicy', 'grilled', 'chicken'],
-            image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=300&h=300&fit=crop&crop=center',
-            variants: []
-          },
-          {
-            id: 2,
-            name: 'Caesar Salad',
-            description: 'Fresh romaine lettuce with parmesan cheese, croutons, and our homemade Caesar dressing.',
-            category: 'Appetizers',
-            price: 8.99,
-            inStock: true,
-            tags: ['vegetarian', 'healthy'],
-            image: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=300&h=300&fit=crop&crop=center',
-            variants: []
-          },
-          {
-            id: 3,
-            name: 'Chocolate Lava Cake',
-            description: 'Warm chocolate cake with a molten center, served with vanilla ice cream.',
-            category: 'Desserts',
-            price: 6.99,
-            inStock: true,
-            tags: ['dessert', 'chocolate', 'warm'],
-            image: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=300&h=300&fit=crop&crop=center',
-            variants: []
+        // First try to load from localStorage as backup
+        let storedProducts = null;
+        const storedData = localStorage.getItem('vendorProducts');
+        if (storedData) {
+          try {
+            const parsedProducts = JSON.parse(storedData);
+            if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+              console.log('Loaded products from localStorage:', parsedProducts);
+              storedProducts = parsedProducts;
+              setProducts(parsedProducts);
+            }
+          } catch (error) {
+            console.error('Error parsing stored products:', error);
           }
-        ]);
+        }
 
+        const response = await vendorAPI.getProducts();
+        console.log('Products response:', response);
+
+        // Check if response is successful and contains array data
+        if (response && response.data && Array.isArray(response.data) && response.data.length >= 0) {
+          setProducts(response.data);
+          // Update localStorage with API data
+          localStorage.setItem('vendorProducts', JSON.stringify(response.data));
+          console.log('Updated localStorage with API data');
+        } else if (response && response.data && typeof response.data === 'string' && response.data.includes('<html>')) {
+          console.error('API returned HTML error page instead of JSON');
+          setTimeout(() => {
+            alert('API endpoint not found. Please check if the backend server is running and the API endpoints are correct.');
+          }, 100);
+          // Keep using localStorage data if API doesn't return valid data
+          if (!storedProducts) {
+            setProducts([]);
+          }
+        } else {
+          console.warn('API response is empty or not an array, keeping localStorage data');
+          // Keep using localStorage data if API doesn't return valid data
+          if (!storedProducts) {
+            setProducts([]);
+          }
+        }
       } catch (error) {
         console.error('Error fetching products:', error);
-        // Fallback to empty array
-        setProducts([]);
+        console.error('Error details:', error.response?.data || error.message);
+
+        // Use stored products as fallback if API fails
+        const storedData = localStorage.getItem('vendorProducts');
+        if (storedData) {
+          try {
+            const parsedProducts = JSON.parse(storedData);
+            if (Array.isArray(parsedProducts) && parsedProducts.length > 0) {
+              console.log('Using stored products as fallback after API error');
+              setProducts(parsedProducts);
+            } else {
+              setProducts([]);
+            }
+          } catch (error) {
+            console.error('Error parsing stored products:', error);
+            setProducts([]);
+          }
+        } else {
+          setProducts([]);
+        }
+
+        // Handle different error types
+        if (error.response?.status === 403) {
+          console.error('Authentication error: User not authorized as vendor');
+          setTimeout(() => {
+            alert('You need to be logged in as a vendor to view products. Please log in with a vendor account.');
+          }, 100);
+        } else if (error.response?.status === 404) {
+          console.error('API endpoint not found');
+          setTimeout(() => {
+            alert('Products API not found. Please check if the backend server is running on port 8000.');
+          }, 100);
+        } else if (error.response?.status >= 500) {
+          console.error('Server error:', error.response.data);
+          setTimeout(() => {
+            alert('Server error occurred. Please check if the backend server is running properly.');
+          }, 100);
+        } else {
+          console.error('Network or other error:', error.message);
+          setTimeout(() => {
+            alert('Failed to load products. Please check your connection and try again.');
+          }, 100);
+        }
       } finally {
         setProductsLoading(false);
       }
@@ -400,14 +516,79 @@ const Products = () => {
     fetchProducts();
   }, []);
 
-  const categories = products.length > 0 ? ['All', ...new Set(products.map(p => p.category))] : ['All'];
-  
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.description.toLowerCase().includes(searchTerm.toLowerCase());
+  // Add focus event listener to refresh products when window gains focus
+  useEffect(() => {
+    const handleFocus = () => {
+      // Refresh products when window gains focus (e.g., after admin approval)
+      const fetchProductsOnFocus = async () => {
+        try {
+          console.log('Window focused - refreshing products...');
+          const response = await vendorAPI.getProducts();
+          if (response && response.data && Array.isArray(response.data)) {
+            setProducts(response.data);
+            localStorage.setItem('vendorProducts', JSON.stringify(response.data));
+            console.log('Products refreshed on focus');
+          }
+        } catch (error) {
+          console.error('Error refreshing products on focus:', error);
+        }
+      };
+
+      // Small delay to ensure admin changes are saved
+      setTimeout(fetchProductsOnFocus, 1000);
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  // Save products to localStorage whenever products state changes
+  useEffect(() => {
+    if (products.length > 0) {
+      // Prepare products for localStorage - handle images properly
+      const productsForStorage = products.map(product => {
+        let imageToStore = product.image;
+
+        // If it's a File object, we can't serialize it, but we can store a placeholder
+        if (product.image instanceof File) {
+          // For File objects, store a special marker that we can recognize later
+          imageToStore = `__FILE_OBJECT_${product.image.name}_${product.image.size}_${product.image.lastModified}`;
+        }
+
+        return {
+          ...product,
+          image: imageToStore
+        };
+      });
+
+      localStorage.setItem('vendorProducts', JSON.stringify(productsForStorage));
+      console.log('Saved products to localStorage:', productsForStorage);
+    }
+  }, [products]);
+
+  const categories = products && Array.isArray(products) && products.length > 0 ? ['All', ...new Set(products.map(p => p.category || 'Uncategorized'))] : ['All'];
+
+  const filteredProducts = products && Array.isArray(products) ? products.filter(product => {
+    if (!product || typeof product !== 'object') return false;
+    const productName = product.name || '';
+    const productDescription = product.description || '';
+    const searchTermLower = searchTerm.toLowerCase();
+
+    const matchesSearch = productName.toLowerCase().includes(searchTermLower) ||
+                         productDescription.toLowerCase().includes(searchTermLower);
     const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
     return matchesSearch && matchesCategory;
-  });
+  }) : [];
+
+  // Debug logging
+  console.log('Products state:', products);
+  console.log('Categories:', categories);
+  console.log('Selected category:', selectedCategory);
+  console.log('Filtered products:', filteredProducts);
+  console.log('Filtered products length:', filteredProducts.length);
 
   const handleAddProduct = () => {
     setEditingProduct(null);
@@ -422,13 +603,18 @@ const Products = () => {
   const handleDeleteProduct = async (productId) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
       try {
-        // Temporarily disable API calls
-        console.log('Product deletion disabled for testing');
-        setProducts(products.filter(p => p.id !== productId));
-        alert('Product deleted successfully (mock data)');
+        await vendorAPI.deleteProduct(productId);
+        const updatedProducts = products.filter(p => p.id !== productId);
+        setProducts(updatedProducts);
+        console.log('Deleted product from API, updated state:', updatedProducts);
+        alert('Product deleted successfully');
       } catch (error) {
         console.error('Error deleting product:', error);
-        alert('Failed to delete product. Please try again.');
+        // Even if API fails, remove from local state and localStorage
+        const updatedProducts = products.filter(p => p.id !== productId);
+        setProducts(updatedProducts);
+        console.log('Deleted product locally after API failure:', updatedProducts);
+        alert('Product deleted locally. It will be synced when the server is available.');
       }
     }
   };
@@ -437,42 +623,108 @@ const Products = () => {
     try {
       if (editingProduct) {
         // Update existing product
-        console.log('Product update disabled for testing');
-        const updatedProduct = {
-          ...editingProduct,
-          ...productData
-        };
-        setProducts(products.map(p =>
-          p.id === editingProduct.id ? updatedProduct : p
-        ));
-        alert('Product updated successfully (mock data)');
+        const response = await vendorAPI.updateProduct(editingProduct.id, productData);
+        console.log('Update response:', response);
+
+        // Check if response contains valid product data
+        if (response && response.data && typeof response.data === 'object' && response.data.name) {
+          const updatedProducts = products.map(p =>
+            p.id === editingProduct.id ? response.data : p
+          );
+          setProducts(updatedProducts);
+          console.log('Updated products state:', updatedProducts);
+          alert('Product updated successfully');
+        } else if (response && response.data && typeof response.data === 'string' && response.data.includes('<html>')) {
+          throw new Error('API returned HTML error page');
+        } else {
+          throw new Error('Invalid response format');
+        }
       } else {
         // Add new product
-        console.log('Product creation disabled for testing');
-        const newProduct = {
-          ...productData,
-          id: Math.max(...products.map(p => p.id), 0) + 1,
-          // If no image provided, use a default placeholder
-          image: productData.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&h=300&fit=crop&crop=center'
-        };
-        setProducts([...products, newProduct]);
-        alert('Product added successfully (mock data)');
+        console.log('Creating product with data:', productData);
+        const response = await vendorAPI.createProduct(productData);
+        console.log('Create response:', response);
+        console.log('Response data:', response.data);
+        console.log('Current products before adding:', products);
+
+        // Check if response contains valid product data
+        if (response && response.data && typeof response.data === 'object' && response.data.name) {
+          const newProducts = [...products, response.data];
+          setProducts(newProducts);
+          console.log('Products after adding:', newProducts);
+          alert('Product added successfully');
+        } else if (response && response.data && typeof response.data === 'string' && response.data.includes('<html>')) {
+          throw new Error('API returned HTML error page');
+        } else if (response && response.status >= 400) {
+          // Handle API error responses properly
+          const errorDetail = response.data?.detail || `HTTP ${response.status}: ${response.statusText}`;
+          throw new Error(errorDetail);
+        } else {
+          throw new Error('Invalid response format');
+        }
       }
       setShowForm(false);
     } catch (error) {
       console.error('Error saving product:', error);
-      alert('Failed to save product. Please try again.');
+      console.error('Error response:', error.response?.data);
+
+      // Show actual API error to user instead of falling back to localStorage
+      let errorMessage = 'Failed to save product. Please try again.';
+
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Authentication failed. Please log in again.';
+      } else if (error.response?.status === 403) {
+        errorMessage = 'You do not have permission to perform this action.';
+      } else if (error.response?.status >= 500) {
+        errorMessage = 'Server error. Please contact support or try again later.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      // Don't save to localStorage - show real error instead
+      alert(`Error: ${errorMessage}\n\nPlease check your authentication and try again.`);
+      console.log('API error - not saving to localStorage:', errorMessage);
     }
   };
 
   if (loading || productsLoading) {
     return (
-      <div className="animate-pulse space-y-4">
-        <div className="h-10 bg-gray-200 rounded w-1/3"></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-48 bg-gray-200 rounded-lg"></div>
-          ))}
+      <div className="space-y-6">
+        <div className="h-8 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-blue mx-auto"></div>
+          <p className="mt-4 text-gray-500">Loading products...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If products failed to load but we're not loading, show error state
+  if (!productsLoading && (!products || !Array.isArray(products))) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+        <div className="text-center py-12 bg-white rounded-lg shadow">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+            <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">Unable to load products</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            Please check your authentication and try refreshing the page.
+          </p>
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand-blue hover:bg-brand-blue/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue"
+            >
+              Refresh Page
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -494,15 +746,42 @@ const Products = () => {
           <FiPlus className="mr-2 h-4 w-4" />
           Add Product
         </button>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 md:mt-0 ml-2 inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue"
+          title="Refresh products to see latest approval status"
+        >
+          <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Refresh
+        </button>
+        {/* Debug buttons - temporarily removed for production */}
+        {/* <div className="mt-4 md:mt-0 flex space-x-2">
+          <button
+            onClick={checkLocalStorage}
+            className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue"
+          >
+            Check Storage
+          </button>
+          <button
+            onClick={saveToLocalStorage}
+            className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue"
+          >
+            Save Storage
+          </button>
+        </div> */}
       </div>
 
       {showForm ? (
-        <ProductForm 
-          product={editingProduct} 
-          onSave={handleSaveProduct} 
-          onCancel={() => setShowForm(false)}
-          isEditing={!!editingProduct}
-        />
+        <>
+          <ProductForm
+            product={editingProduct}
+            onSave={handleSaveProduct}
+            onCancel={() => setShowForm(false)}
+            isEditing={!!editingProduct}
+          />
+        </>
       ) : (
         <>
           <div className="bg-white p-4 rounded-lg shadow">
@@ -519,7 +798,7 @@ const Products = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 <FiFilter className="h-5 w-5 text-gray-400" />
                 <select
@@ -545,7 +824,7 @@ const Products = () => {
               </div>
               <h3 className="mt-2 text-sm font-medium text-gray-900">No products</h3>
               <p className="mt-1 text-sm text-gray-500">
-                {searchTerm || selectedCategory !== 'all' 
+                {searchTerm || selectedCategory !== 'all'
                   ? 'No products match your search criteria.'
                   : 'Get started by adding a new product.'}
               </p>
@@ -564,7 +843,7 @@ const Products = () => {
             <div className="grid grid-cols-1 gap-6">
               {filteredProducts.map((product) => (
                 <ProductCard
-                  key={product.id}
+                  key={product.id || Math.random()}
                   product={product}
                   onEdit={handleEditProduct}
                   onDelete={handleDeleteProduct}

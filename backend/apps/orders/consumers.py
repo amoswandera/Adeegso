@@ -16,10 +16,10 @@ class OrdersConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event.get("payload", {}))
 
 
-class OrderDetailConsumer(AsyncJsonWebsocketConsumer):
+class RiderConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        self.order_id = self.scope['url_route']['kwargs']['order_id']
-        self.group_name = f"order_{self.order_id}"
+        self.rider_id = self.scope['url_route']['kwargs']['rider_id']
+        self.group_name = f"rider_{self.rider_id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
 

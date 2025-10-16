@@ -29,6 +29,7 @@ import AdminCreateVendor from './pages/AdminCreateVendor';
 import AdminCreateRider from './pages/AdminCreateRider';
 import AdminUsers from './pages/AdminUsers';
 import AdminCreateUser from './pages/AdminCreateUser';
+import AdminProfile from './pages/AdminProfile';
 
 // Vendor
 import VendorLayout from './pages/vendor/VendorLayout';
@@ -51,7 +52,7 @@ import PageNotFound from './pages/PageNotFound';
 
 // Main layout component
 function Layout({ children }) {
-  const { user: currentUser, logout } = useAuth();
+  const { user: currentUser, logout, isAuthenticated } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -87,29 +88,61 @@ function Layout({ children }) {
                   to="/vendors"
                   className={`text-sm font-medium ${location.pathname === '/vendors' ? 'text-brand-blue border-b-2 border-brand-blue' : 'text-gray-700 hover:text-brand-blue'}`}
                 >
-                  Vendors
+                  Browse Restaurants
                 </Link>
-                <Link
-                  to="/admin"
-                  className={`text-sm font-medium ${location.pathname.startsWith('/admin') ? 'text-brand-blue border-b-2 border-brand-blue' : 'text-gray-700 hover:text-brand-blue'}`}
-                >
-                  Admin
-                </Link>
-                <Link
-                  to="/vendor"
-                  className={`text-sm font-medium ${location.pathname.startsWith('/vendor') ? 'text-brand-blue border-b-2 border-brand-blue' : 'text-gray-700 hover:text-brand-blue'}`}
-                >
-                  Vendor Dashboard
-                </Link>
-                <Link
-                  to="/rider"
-                  className={`text-sm font-medium ${location.pathname.startsWith('/rider') ? 'text-brand-blue border-b-2 border-brand-blue' : 'text-gray-700 hover:text-brand-blue'}`}
-                >
-                  Rider Dashboard
-                </Link>
+
+                {/* Show admin link only for admin users */}
+                {isAuthenticated && currentUser?.role === 'admin' && (
+                  <Link
+                    to="/admin"
+                    className={`text-sm font-medium ${location.pathname.startsWith('/admin') ? 'text-brand-blue border-b-2 border-brand-blue' : 'text-gray-700 hover:text-brand-blue'}`}
+                  >
+                    Admin
+                  </Link>
+                )}
+
+                {/* Show vendor link only for vendor users */}
+                {isAuthenticated && currentUser?.role === 'vendor' && (
+                  <Link
+                    to="/vendor/dashboard"
+                    className={`text-sm font-medium ${location.pathname.startsWith('/vendor') ? 'text-brand-blue border-b-2 border-brand-blue' : 'text-gray-700 hover:text-brand-blue'}`}
+                  >
+                    Vendor Dashboard
+                  </Link>
+                )}
+
+                {/* Show rider link only for rider users */}
+                {isAuthenticated && currentUser?.role === 'rider' && (
+                  <Link
+                    to="/rider"
+                    className={`text-sm font-medium ${location.pathname.startsWith('/rider') ? 'text-brand-blue border-b-2 border-brand-blue' : 'text-gray-700 hover:text-brand-blue'}`}
+                  >
+                    Rider Dashboard
+                  </Link>
+                )}
               </nav>
 
-              {/* For now, hide login/logout buttons since authentication is disabled */}
+              {/* Authentication buttons */}
+              {isAuthenticated ? (
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm text-gray-700">
+                    Welcome, {currentUser?.first_name || currentUser?.username}
+                  </span>
+                  <button
+                    onClick={handleLogout}
+                    className="bg-gray-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <Link
+                  to="/login"
+                  className="bg-brand-blue text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-brand-blue/90"
+                >
+                  Login
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -185,6 +218,7 @@ function App() {
                 <Route path="payments" element={<AdminPayments />} />
                 <Route path="users" element={<AdminUsers />} />
                 <Route path="users/new" element={<AdminCreateUser />} />
+                <Route path="profile" element={<AdminProfile />} />
               </Route>
               
               {/* Vendor Routes */}
@@ -222,9 +256,31 @@ function App() {
 
 // Component to redirect authenticated users away from auth pages
 function AuthRedirect({ children }) {
-  // For now, don't redirect since authentication is disabled
+  const { isAuthenticated, user } = useAuth();
+  const location = useLocation();
+
+  // If user is authenticated, redirect to appropriate dashboard
+  if (isAuthenticated && user) {
+    const redirectPath = getRedirectPath(user.role);
+    return <Navigate to={redirectPath} replace />;
+  }
+
   return children;
 }
+
+// Helper function to get redirect path based on role
+const getRedirectPath = (role) => {
+  switch (role) {
+    case 'admin':
+      return '/admin';
+    case 'vendor':
+      return '/vendor/dashboard';
+    case 'rider':
+      return '/rider';
+    default:
+      return '/';
+  }
+};
 
 createRoot(document.getElementById('root')).render(<App />)
 

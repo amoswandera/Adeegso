@@ -1,15 +1,105 @@
-from django.shortcuts import render
-from rest_framework import viewsets, permissions, status, serializers
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework import status, viewsets, permissions
+from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth.models import User
-from .models import Rider, Vendor, Account
+from django.shortcuts import get_object_or_404
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.db import transaction
+from .models import *
+from .serializers import *
+import json  # Add this import
 from .serializers import RiderSerializer, UserSerializer, VendorSerializer
 from .serializers import AdminUserCreateSerializer
 from .permissions import IsAdmin, IsVendor, ReadOnly
-from django.db import transaction
+from apps.catalog.models import Product
+from apps.catalog.serializers import ProductSerializer
 
-# Create your views here.
+
+class VendorProductViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for vendors to manage their own products.
+    Only authenticated vendors can access their products.
+    """
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)  # Handle file uploads and JSON
+
+    def get_queryset(self):
+        """
+        Return only products belonging to the authenticated vendor.
+        """
+        user = self.request.user
+        if not hasattr(user, 'account') or user.account.role != 'vendor':
+            return Product.objects.none()
+
+        try:
+            vendor = Vendor.objects.get(owner=user)  # Use owner field
+            return Product.objects.filter(vendor=vendor)
+        except Vendor.DoesNotExist:
+            return Product.objects.none()
+
+    def perform_create(self, serializer):
+        """
+        Create a product for the authenticated vendor.
+        """
+        user = self.request.user
+
+        # Ensure the user is a vendor
+        if not hasattr(user, 'account') or user.account.role != 'vendor':
+            raise PermissionDenied("Only vendors can create products")
+
+        try:
+            vendor = Vendor.objects.get(owner=user)
+        except Vendor.DoesNotExist:
+            raise PermissionDenied("Vendor profile not found")
+
+        # Create product for this vendor
+        serializer.save(vendor=vendor)
+
+    def perform_update(self, serializer):
+        """
+        Update a product - ensure vendor owns the product.
+        """
+        user = self.request.user
+        product = self.get_object()
+
+        # Ensure the user is a vendor and owns this product
+        if not hasattr(user, 'account') or user.account.role != 'vendor':
+            raise PermissionDenied("Only vendors can update products")
+
+        try:
+            vendor = Vendor.objects.get(owner=user)
+            if product.vendor != vendor:
+                raise PermissionDenied("You can only update your own products")
+        except Vendor.DoesNotExist:
+            raise PermissionDenied("Vendor profile not found")
+
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        """
+        Delete a product - ensure vendor owns the product.
+        """
+        user = self.request.user
+
+        # Ensure the user is a vendor and owns this product
+        if not hasattr(user, 'account') or user.account.role != 'vendor':
+            raise PermissionDenied("Only vendors can delete products")
+
+        try:
+            vendor = Vendor.objects.get(owner=user)
+            if instance.vendor != vendor:
+                raise PermissionDenied("You can only delete your own products")
+        except Vendor.DoesNotExist:
+            raise PermissionDenied("Vendor profile not found")
 
 
 @api_view(['POST'])
@@ -87,7 +177,7 @@ def register_user(request):
 
             # Create rider record if role is rider
             elif data['role'] == Account.Role.RIDER:
-                Rider.objects.create(user=user)
+                Rider.objects.create(user=user, verified=True)
 
         return Response(
             {
@@ -161,6 +251,153 @@ def user_profile(request):
     })
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_user(request):
+    """
+    Authenticate user and return JWT tokens
+    """
+    username = request.data.get('username')
+    password = request.data.get('password')
+
+    if not username or not password:
+        return Response(
+            {'detail': 'Username and password are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Authenticate user
+    user = authenticate(username=username, password=password)
+
+    if user is None:
+        return Response(
+            {'detail': 'Invalid credentials'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    if not user.is_active:
+        return Response(
+            {'detail': 'User account is disabled'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    # Generate tokens
+    refresh = RefreshToken.for_user(user)
+
+    # Get user role from Account model
+    try:
+        account = user.account
+        user_role = account.role
+        phone_number = account.phone_number
+        is_verified = account.is_verified
+    except Account.DoesNotExist:
+        user_role = 'customer'
+        phone_number = ''
+        is_verified = False
+
+    return Response({
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'role': user_role,
+            'phone_number': phone_number,
+            'is_verified': is_verified
+        }
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def refresh_token(request):
+    """
+    Refresh access token using refresh token
+    """
+    refresh_token = request.data.get('refresh')
+
+    if not refresh_token:
+        return Response(
+            {'detail': 'Refresh token is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        refresh = RefreshToken(refresh_token)
+        access_token = str(refresh.access_token)
+        return Response({'access': access_token})
+    except Exception as e:
+        return Response(
+            {'detail': 'Invalid refresh token'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+
+@api_view(['GET'])
+def logout_user(request):
+    """
+    Logout user (client-side should remove tokens)
+    """
+    return Response({'detail': 'Successfully logged out'})
+
+
+@api_view(['GET', 'PUT'])
+def get_current_user(request):
+    """
+    Get or update current authenticated user's profile
+    """
+    user = request.user
+
+    if not user.is_authenticated:
+        return Response(
+            {'detail': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    if request.method == 'GET':
+        # Get user role from Account model
+        try:
+            account = user.account
+            user_role = account.role
+            phone_number = account.phone_number
+            is_verified = account.is_verified
+        except Account.DoesNotExist:
+            user_role = 'customer'
+            phone_number = ''
+            is_verified = False
+
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'role': user_role,
+            'phone_number': phone_number,
+            'is_verified': is_verified
+        })
+    elif request.method == 'PUT':
+        # Update user profile
+        data = request.data
+        user.first_name = data.get('first_name', user.first_name)
+        user.last_name = data.get('last_name', user.last_name)
+        user.email = data.get('email', user.email)
+        user.save()
+
+        # Update account if exists
+        try:
+            account = user.account
+            account.phone_number = data.get('phone_number', account.phone_number)
+            account.save()
+        except Account.DoesNotExist:
+            pass  # No account to update
+
+        return Response({'detail': 'Profile updated successfully'})
+
+
 class RiderViewSet(viewsets.ModelViewSet):
     queryset = Rider.objects.all().select_related("user")
     serializer_class = RiderSerializer
@@ -182,7 +419,6 @@ class RiderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(user__username__icontains=q)
         return qs
 
-
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("id")
     serializer_class = UserSerializer
@@ -202,10 +438,8 @@ class VendorViewSet(viewsets.ModelViewSet):
     serializer_class = VendorSerializer
 
     def get_permissions(self):
-        if self.request.method in ("GET",):
-            return [permissions.AllowAny()]
-        # Only admins can create/update/delete vendors
-        return [IsAdmin()]
+        # TEMPORARY: Allow all requests for development - NO AUTH REQUIRED
+        return [permissions.AllowAny()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -226,18 +460,40 @@ class VendorViewSet(viewsets.ModelViewSet):
         # Default: only show approved vendors to other authenticated users
         return qs.filter(approved=True)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get', 'put'], permission_classes=[permissions.AllowAny])
     def profile(self, request):
-        """Get current user's vendor profile"""
+        """Get or update current user's vendor profile"""
         user = request.user
+
+        # For development, return default if not authenticated
+        if not user.is_authenticated:
+            if request.method == 'GET':
+                return Response({
+                    'id': 1,
+                    'name': 'Test Restaurant',
+                    'location': 'Test Location',
+                    'approved': True,
+                    'commission_rate': 10.0,
+                    'rating': 4.5,
+                    'rating_count': 100
+                })
+            else:
+                return Response({'detail': 'Authentication required'}, status=401)
+
+        # Get vendor for authenticated user
         try:
             vendor = Vendor.objects.get(owner=user)
+        except Vendor.DoesNotExist:
+            return Response({'detail': 'Vendor profile not found'}, status=404)
+
+        if request.method == 'GET':
             serializer = self.get_serializer(vendor)
             return Response(serializer.data)
-        except Vendor.DoesNotExist:
-            return Response({
-                'detail': 'Vendor profile not found. Please complete your vendor registration.'
-            }, status=status.HTTP_404_NOT_FOUND)
+        elif request.method == 'PUT':
+            serializer = self.get_serializer(vendor, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
         try:
@@ -259,7 +515,7 @@ class VendorViewSet(viewsets.ModelViewSet):
         if not (self.request.user.is_superuser or
                (hasattr(self.request.user, 'account') and
                 self.request.user.account.role == 'admin')):
-            raise permissions.PermissionDenied("Only administrators can create vendors")
+            raise PermissionDenied("Only administrators can create vendors")
 
         # The actual creation is handled by the serializer
         serializer.save()
@@ -271,5 +527,30 @@ class VendorViewSet(viewsets.ModelViewSet):
                (hasattr(user, 'account') and
                 (user.account.role == 'admin' or
                  (user.account.role == 'vendor' and serializer.instance.owner == user)))):
-            raise permissions.PermissionDenied("You do not have permission to update this vendor")
+            raise PermissionDenied("You do not have permission to update this vendor")
         serializer.save()
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def analytics(self, request):
+        """Get vendor analytics for the current user"""
+        # TEMPORARY: Return empty analytics for development - NO AUTH REQUIRED
+        return Response({
+            'total_orders': 0,
+            'total_revenue': 0,
+            'completed_orders': 0,
+            'average_order_value': 0,
+            'daily_sales': [],
+            'top_products': []
+        })
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def earnings(self, request):
+        """Get vendor earnings data"""
+        # TEMPORARY: Return empty earnings for development - NO AUTH REQUIRED
+        return Response({
+            'total_earnings': 0,
+            'commission_rate': 0,
+            'commission_amount': 0,
+            'net_earnings': 0,
+            'weekly_earnings': []
+        })

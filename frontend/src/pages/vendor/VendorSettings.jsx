@@ -4,7 +4,7 @@ import { FiSettings, FiUser, FiBell, FiCreditCard, FiMapPin, FiClock, FiSave, Fi
 import { vendorAPI } from '../../services/api';
 
 const VendorSettings = () => {
-  const { vendorData, loading } = useOutletContext();
+  const { vendorData, loading, refreshVendorData } = useOutletContext();
   const [activeTab, setActiveTab] = useState('profile');
   const [isLoading, setIsLoading] = useState(false);
   const [settings, setSettings] = useState({
@@ -68,8 +68,25 @@ const VendorSettings = () => {
   const handleSave = async () => {
     try {
       setIsLoading(true);
-      // In a real app, you'd save settings to API
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      // Update vendor profile
+      const response = await vendorAPI.updateVendorProfile({
+        name: settings.profile.name,
+        location: settings.profile.address,
+        description: settings.profile.description
+      });
+      // Update local settings with response data
+      const updatedData = response.data;
+      setSettings(prev => ({
+        ...prev,
+        profile: {
+          ...prev.profile,
+          name: updatedData.name,
+          address: updatedData.location,
+          description: updatedData.description
+        }
+      }));
+      // Refresh vendor data in layout
+      await refreshVendorData();
       alert('Settings saved successfully!');
     } catch (error) {
       console.error('Error saving settings:', error);

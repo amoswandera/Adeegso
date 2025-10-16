@@ -5,17 +5,17 @@ export const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [tokens, setTokens] = useState(() => {
-    const raw = localStorage.getItem('tokens')
+    const raw = sessionStorage.getItem('tokens')
     return raw ? JSON.parse(raw) : null
   })
 
   useEffect(() => {
     if (tokens?.access) {
       setAuthToken(tokens.access)
-      localStorage.setItem('tokens', JSON.stringify(tokens))
+      sessionStorage.setItem('tokens', JSON.stringify(tokens))
     } else {
       setAuthToken(null)
-      localStorage.removeItem('tokens')
+      sessionStorage.removeItem('tokens')
     }
   }, [tokens])
 
