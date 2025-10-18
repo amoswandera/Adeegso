@@ -229,6 +229,33 @@ class WebSocketService {
     this.wsUrl = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8000/ws';
   }
 
+  async requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+      const permission = await Notification.requestPermission();
+      return permission === 'granted';
+    }
+    return Notification.permission === 'granted';
+  }
+
+  showNotification(title, body, url = '/') {
+    if ('serviceWorker' in navigator && 'showNotification' in ServiceWorkerRegistration.prototype) {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.showNotification(title, {
+          body,
+          icon: '/icons/icon-192x192.png',
+          badge: '/icons/icon-192x192.png',
+          data: url,
+        });
+      });
+    } else if (Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/icons/icon-192x192.png',
+        data: url,
+      });
+    }
+  }
+
   connect() {
     if (this.socket) return;
 
@@ -273,6 +300,9 @@ class WebSocketService {
     switch (data.type) {
       case 'order_created':
         this.callbacks.onOrderCreated.forEach(callback => callback(data.order));
+        if (this.requestNotificationPermission()) {
+          this.showNotification('Order Created', `New order #${data.order.id} has been placed.`, `/orders/${data.order.id}`);
+        }
         break;
       case 'order_updated':
         this.callbacks.onOrderUpdated.forEach(callback => callback(data.order));
@@ -281,6 +311,9 @@ class WebSocketService {
         this.callbacks.onOrderStatusChanged.forEach(callback =>
           callback(data.order_id, data.status)
         );
+        if (this.requestNotificationPermission()) {
+          this.showNotification('Order Status Updated', `Order #${data.order_id} status changed to ${data.status}.`, `/orders/${data.order_id}`);
+        }
         break;
       default:
         console.log('Unknown message type:', data.type);

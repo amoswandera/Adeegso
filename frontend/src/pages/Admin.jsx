@@ -38,14 +38,14 @@ export default function Admin() {
     // Initial load
     loadData()
 
-    // WebSocket connection disabled - backend doesn't have WS endpoints yet
-    // const ws = connectAdminDashboard(() => {
-    //   loadData()
-    // })
+    // WebSocket connection for real-time updates
+    const ws = connectAdminDashboard(() => {
+      loadData()
+    })
 
     // Cleanup function
     return () => {
-      // if (ws) ws.close()
+      if (ws) ws.close()
     }
   }, [loadData])
 
