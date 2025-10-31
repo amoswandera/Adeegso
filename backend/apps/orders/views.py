@@ -7,8 +7,11 @@ from apps.accounts.permissions import IsVendor, IsRider, IsAdmin, IsVendorOrRide
 from apps.catalog.models import Product
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from apps.accounts.models import Rider
+from apps.accounts.models import Rider, Wallet, WalletTransaction
 from django.utils import timezone
+from django.db.models import Sum, Count, Avg
+from datetime import timedelta
+import json
 
 
 # Create your views here.
@@ -76,6 +79,36 @@ class RiderDeliveryViewSet(viewsets.ViewSet):
 
         serializer = OrderSerializer(order, context={'request': request})
         return response.Response(serializer.data)
+
+    @decorators.action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Reject a delivery request"""
+        try:
+            rider = Rider.objects.get(user=request.user)
+        except Rider.DoesNotExist:
+            return response.Response({"detail": "Rider profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            order = Order.objects.get(pk=pk, status=Order.Status.ACCEPTED, rider__isnull=True)
+        except Order.DoesNotExist:
+            return response.Response({"detail": "Order not available for delivery"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Log rejection event
+        OrderEvent.objects.create(order=order, status=order.status, note=f"Delivery rejected by rider {rider.user.username}")
+
+        # Broadcast update to remove from available deliveries for other riders
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            "orders",
+            {
+                "type": "delivery_rejected",
+                "order_id": order.id,
+                "rider_id": rider.id,
+                "message": "Delivery request rejected by rider"
+            }
+        )
+
+        return response.Response({"detail": "Delivery request rejected"})
 
     @decorators.action(detail=True, methods=['post'])
     def update_status(self, request, pk=None):
@@ -172,23 +205,21 @@ class RiderDeliveryViewSet(viewsets.ViewSet):
         except (ValueError, TypeError):
             return response.Response({"detail": "Invalid latitude or longitude values"}, status=status.HTTP_400_BAD_REQUEST)
 
-    @decorators.action(detail=False, methods=['post'])
-    def set_online_status(self, request):
-        """Set rider online/offline status"""
+    @decorators.action(detail=False, methods=['get'])
+    def my_deliveries(self, request):
+        """Get rider's assigned deliveries"""
         try:
             rider = Rider.objects.get(user=request.user)
         except Rider.DoesNotExist:
             return response.Response({"detail": "Rider profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        is_online = request.data.get('is_online')
-        if isinstance(is_online, bool):
-            if is_online:
-                rider.go_online()
-            else:
-                rider.go_offline()
-            return response.Response({"detail": f"Rider set to {'online' if is_online else 'offline'}"})
-        else:
-            return response.Response({"detail": "is_online must be a boolean"}, status=status.HTTP_400_BAD_REQUEST)
+        # Get orders assigned to this rider
+        my_orders = Order.objects.filter(
+            rider=rider
+        ).select_related('vendor', 'customer').prefetch_related('items').order_by('-created_at')
+
+        serializer = OrderSerializer(my_orders, many=True, context={'request': request})
+        return response.Response(serializer.data)
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -281,18 +312,39 @@ class OrderViewSet(viewsets.ModelViewSet):
             order.subtotal_amount = subtotal
             order.total_amount = subtotal + float(delivery_fee)
             order.save(update_fields=["subtotal_amount", "total_amount", "updated_at"])
-            # Log initial event
-            OrderEvent.objects.create(order=order, status=order.status, note="Order created")
-            # Broadcast to orders list and order detail channels
-            channel_layer = get_channel_layer()
-            payload = {"kind": "order_created", "order_id": order.id, "status": order.status}
-            
-            # Broadcast to all relevant channels
-            groups = ["orders", f"order_{order.id}", "admin_dashboard"]
-            for group in groups:
-                async_to_sync(channel_layer.group_send)(
-                    group, {"type": "broadcast", "payload": payload}
-                )
+        # Broadcast order creation
+        channel_layer = get_channel_layer()
+        order_data = OrderSerializer(order).data
+
+        # Broadcast to vendor
+        async_to_sync(channel_layer.group_send)(
+            f"vendor_{order.vendor.id}",
+            {
+                "type": "order_created",
+                "order": order_data
+            }
+        )
+
+        # Broadcast to customer
+        async_to_sync(channel_layer.group_send)(
+            f"customer_{order.customer.id}",
+            {
+                "type": "order_created",
+                "order": order_data
+            }
+        )
+
+        # Broadcast to admin dashboard
+        async_to_sync(channel_layer.group_send)(
+            "admin_dashboard",
+            {
+                "type": "analytics_update",
+                "data": {
+                    "orders_today": Order.objects.filter(created_at__date=timezone.now().date()).count(),
+                    "total_orders": Order.objects.count()
+                }
+            }
+        )
 
         serializer = OrderSerializer(order)
         headers = self.get_success_headers(serializer.data)
@@ -340,16 +392,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                 # Broadcast assignment to rider
                 channel_layer = get_channel_layer()
                 rider_payload = {
-                    "kind": "rider_assignment",
-                    "order_id": order.id,
-                    "status": order.status,
-                    "rider_id": assigned_rider.id
+                    "type": "order_created",  # Rider gets full order data
+                    "order": OrderSerializer(order).data
                 }
 
                 # Send to rider's personal channel
                 async_to_sync(channel_layer.group_send)(
                     f"rider_{assigned_rider.id}",
-                    {"type": "broadcast", "payload": rider_payload}
+                    rider_payload
                 )
 
         order.save(update_fields=["status", "rider", "updated_at"])
@@ -357,15 +407,246 @@ class OrderViewSet(viewsets.ModelViewSet):
         # Log status change
         OrderEvent.objects.create(order=order, status=new_status, note="Status updated")
 
-        # Broadcast update
-        channel_layer = get_channel_layer()
-        payload = {"kind": "order_status", "order_id": order.id, "status": order.status}
+        # Create wallet transaction if order is delivered and has a rider
+        if new_status == 'delivered' and order.rider:
+            try:
+                from apps.accounts.models import Wallet, WalletTransaction
+                # Get or create wallet for rider
+                wallet, created = Wallet.objects.get_or_create(rider=order.rider)
 
-        # Broadcast to all relevant channels
-        groups = ["orders", f"order_{order.id}", "admin_dashboard"]
-        for group in groups:
+                # Calculate rider earnings (15% of order total)
+                rider_earnings = order.total_amount * 0.15
+
+                # Create earning transaction
+                WalletTransaction.objects.create(
+                    wallet=wallet,
+                    amount=rider_earnings,
+                    transaction_type=Wallet.TransactionType.EARNING,
+                    description=f"Delivery earnings for order #{order.id}",
+                    order=order
+                )
+
+                # Update wallet balance
+                wallet.balance += rider_earnings
+                wallet.save(update_fields=['balance'])
+
+                print(f"Created wallet transaction for rider {order.rider.user.username}: +${rider_earnings}")
+
+            except Exception as e:
+                print(f"Error creating wallet transaction: {e}")
+
+        # Broadcast status update
+        channel_layer = get_channel_layer()
+        order_data = OrderSerializer(order).data
+
+        # Broadcast to customer
+        async_to_sync(channel_layer.group_send)(
+            f"customer_{order.customer.id}",
+            {
+                "type": "order_status_changed",
+                "order_id": order.id,
+                "status": order.status
+            }
+        )
+
+        # Broadcast to vendor
+        async_to_sync(channel_layer.group_send)(
+            f"vendor_{order.vendor.id}",
+            {
+                "type": "order_updated",
+                "order": order_data
+            }
+        )
+
+        # Broadcast to rider if assigned
+        if order.rider:
             async_to_sync(channel_layer.group_send)(
-                group, {"type": "broadcast", "payload": payload}
+                f"rider_{order.rider.id}",
+                {
+                    "type": "order_status_changed",
+                    "order_id": order.id,
+                    "status": order.status
+                }
             )
 
+        # Broadcast to admin dashboard
+        async_to_sync(channel_layer.group_send)(
+            "admin_dashboard",
+            {
+                "type": "analytics_update",
+                "data": {
+                    "status_counts": {
+                        status: Order.objects.filter(status=status).count()
+                        for status, _ in Order.Status.choices
+                    }
+                }
+            }
+        )
+
         return response.Response(OrderSerializer(order).data)
+
+
+# Analytics API endpoints for admin dashboard
+@decorators.api_view(['GET'])
+@decorators.permission_classes([IsAdmin])
+def admin_analytics_summary(request):
+    """Get admin analytics summary data"""
+    today = timezone.now().date()
+
+    try:
+        # Today's orders and revenue
+        orders_today = Order.objects.filter(created_at__date=today)
+        orders_today_count = orders_today.count()
+        gmv_today = orders_today.aggregate(total=Sum('total_amount'))['total'] or 0
+
+        # Orders by status
+        status_counts = {}
+        for status, _ in Order.Status.choices:
+            status_counts[status] = Order.objects.filter(status=status).count()
+
+        # Last 7 days data
+        last_7_days = []
+        for i in range(6, -1, -1):
+            date = today - timedelta(days=i)
+            count = Order.objects.filter(created_at__date=date).count()
+            last_7_days.append({
+                'date': date.strftime('%Y-%m-%d'),
+                'count': count
+            })
+
+        # Recent activity (last 20 events)
+        recent_events = []
+        order_events = OrderEvent.objects.select_related('order').order_by('-created_at')[:20]
+        for event in order_events:
+            recent_events.append({
+                'type': 'order',
+                'id': event.order.id,
+                'timestamp': event.created_at.isoformat(),
+                'description': f'Order #{event.order.id} {event.status}',
+                'status': event.status
+            })
+
+        # Payment events (last 10)
+        from apps.payments.models import Payment
+        payment_events = Payment.objects.select_related('order').order_by('-created_at')[:10]
+        for payment in payment_events:
+            recent_events.append({
+                'type': 'payment',
+                'id': payment.id,
+                'timestamp': payment.created_at.isoformat(),
+                'description': f'Payment {payment.provider} - {payment.status}',
+                'amount': float(payment.amount),
+                'status': payment.status
+            })
+
+        # Sort by timestamp
+        recent_events.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # Overall statistics
+        total_stats = {
+            'total_orders': Order.objects.count(),
+            'total_revenue': float(Order.objects.aggregate(total=Sum('total_amount'))['total'] or 0),
+            'total_users': len(set(Order.objects.values_list('customer', flat=True))),
+            'active_vendors': len(set(Order.objects.values_list('vendor', flat=True))),
+            'active_riders': Rider.objects.filter(verified=True).count()
+        }
+
+        return response.Response({
+            'orders_today': orders_today_count,
+            'gmv_today': float(gmv_today),
+            'status_counts': status_counts,
+            'last_7_days': last_7_days,
+            'recent_activity': recent_events[:10],
+            'total_stats': total_stats
+        })
+
+    except Exception as e:
+        return response.Response(
+            {'error': 'Failed to load analytics data', 'details': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@decorators.api_view(['GET'])
+@decorators.permission_classes([IsAdmin])
+def admin_analytics_detailed(request):
+    """Get detailed analytics for specific date range"""
+    date_range = request.GET.get('range', 'today')
+    today = timezone.now().date()
+
+    try:
+        # Determine date range
+        if date_range == 'today':
+            start_date = today
+            end_date = today
+        elif date_range == 'yesterday':
+            yesterday = today - timedelta(days=1)
+            start_date = yesterday
+            end_date = yesterday
+        elif date_range == 'last_7_days':
+            start_date = today - timedelta(days=6)
+            end_date = today
+        elif date_range == 'last_30_days':
+            start_date = today - timedelta(days=29)
+            end_date = today
+        else:
+            start_date = today
+            end_date = today
+
+        # Get orders in date range
+        orders = Order.objects.filter(created_at__date__gte=start_date, created_at__date__lte=end_date)
+
+        # Revenue by day
+        revenue_by_day = []
+        current_date = start_date
+        while current_date <= end_date:
+            day_orders = orders.filter(created_at__date=current_date)
+            day_revenue = day_orders.aggregate(total=Sum('total_amount'))['total'] or 0
+            day_count = day_orders.count()
+
+            revenue_by_day.append({
+                'date': current_date.strftime('%Y-%m-%d'),
+                'revenue': float(day_revenue),
+                'orders': day_count
+            })
+            current_date += timedelta(days=1)
+
+        # Top vendors by revenue
+        top_vendors = orders.values('vendor__name').annotate(
+            revenue=Sum('total_amount'),
+            order_count=Count('id')
+        ).order_by('-revenue')[:10]
+
+        # Payment method breakdown
+        from apps.payments.models import Payment
+        payment_methods = Payment.objects.filter(
+            order__created_at__date__gte=start_date,
+            order__created_at__date__lte=end_date
+        ).values('provider').annotate(
+            count=Count('id'),
+            total_amount=Sum('amount')
+        ).order_by('-total_amount')
+
+        # Vendor performance
+        vendor_performance = orders.values('vendor__name').annotate(
+            total_orders=Count('id'),
+            total_revenue=Sum('total_amount'),
+            avg_order_value=Avg('total_amount')
+        ).order_by('-total_revenue')[:10]
+
+        return response.Response({
+            'date_range': date_range,
+            'revenue_by_day': revenue_by_day,
+            'top_vendors': list(top_vendors),
+            'payment_methods': list(payment_methods),
+            'vendor_performance': list(vendor_performance),
+            'total_orders': orders.count(),
+            'total_revenue': float(orders.aggregate(total=Sum('total_amount'))['total'] or 0),
+            'average_order_value': float(orders.aggregate(avg=Avg('total_amount'))['avg'] or 0)
+        })
+
+    except Exception as e:
+        return response.Response(
+            {'error': 'Failed to load detailed analytics', 'details': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

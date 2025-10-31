@@ -73,13 +73,21 @@ class VendorConsumer(AsyncWebsocketConsumer):
     async def order_created(self, event):
         """Send order created notification to vendor"""
         await self.send(text_data=json.dumps({
-            'type': 'order_created',
-            'order': event['order']
+            "type": "order_created",
+            "order": event['order']
         }))
 
     async def order_updated(self, event):
         """Send order updated notification to vendor"""
         await self.send(text_data=json.dumps({
-            'type': 'order_updated',
-            'order': event['order']
+            "type": "order_updated",
+            "order": event['order']
+        }))
+
+    async def order_status_changed(self, event):
+        """Send order status changed notification to vendor"""
+        await self.send(text_data=json.dumps({
+            "type": "order_status_changed",
+            "order_id": event['order_id'],
+            "status": event['status']
         }))

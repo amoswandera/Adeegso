@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Account, Vendor, Rider, Wallet, WalletTransaction
+from .models import Account, Vendor, Rider, Wallet, WalletTransaction, VendorKYC, RiderKYC
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -151,7 +151,7 @@ class RiderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rider
         fields = [
-            "id", "user", "user_id", "verified",
+            "id", "user", "user_id", "verified", "vehicle_type", "license_plate",
             "current_latitude", "current_longitude", "last_location_update", "is_online",
             "wallet_balance", "created_at", "updated_at"
         ]
@@ -183,3 +183,87 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
         model = WalletTransaction
         fields = ["id", "wallet", "amount", "transaction_type", "description", "order", "created_at"]
         read_only_fields = ["created_at"]
+
+
+class VendorKYCSerializer(serializers.ModelSerializer):
+    vendor = VendorSerializer(read_only=True)
+    vendor_id = serializers.IntegerField(write_only=True, required=True)
+    reviewed_by = UserSerializer(read_only=True)
+
+    class Meta:
+        model = VendorKYC
+        fields = [
+            "id", "vendor", "vendor_id",
+            "full_name", "date_of_birth", "nationality", "national_id_number",
+            "business_registration_number", "tax_id_number", "business_address", "business_phone",
+            "bank_name", "bank_account_number", "bank_routing_number",
+            "national_id_document", "business_registration_document", "tax_document", "bank_statement",
+            "status", "submitted_at", "reviewed_at", "reviewed_by", "rejection_reason", "admin_notes",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["submitted_at", "reviewed_at", "reviewed_by", "created_at", "updated_at"]
+
+    def validate_vendor_id(self, value):
+        """Validate that the vendor exists and doesn't already have KYC submitted."""
+        try:
+            vendor = Vendor.objects.get(id=value)
+            if hasattr(vendor, 'kyc'):
+                raise serializers.ValidationError("KYC already submitted for this vendor")
+            return value
+        except Vendor.DoesNotExist:
+            raise serializers.ValidationError("Vendor not found")
+
+    def create(self, validated_data):
+        vendor_id = validated_data.pop("vendor_id")
+        try:
+            vendor = Vendor.objects.get(id=vendor_id)
+        except Vendor.DoesNotExist:
+            raise serializers.ValidationError({"vendor_id": "Vendor not found"})
+
+        # Double-check in case validation was bypassed
+        if VendorKYC.objects.filter(vendor=vendor).exists():
+            raise serializers.ValidationError({"vendor_id": "KYC already submitted for this vendor"})
+
+        validated_data["vendor"] = vendor
+class RiderKYCSerializer(serializers.ModelSerializer):
+    rider = RiderSerializer(read_only=True)
+    rider_id = serializers.IntegerField(write_only=True, required=True)
+    reviewed_by = UserSerializer(read_only=True)
+
+    class Meta:
+        model = RiderKYC
+        fields = [
+            "id", "rider", "rider_id",
+            "full_name", "date_of_birth", "nationality", "national_id_number",
+            "vehicle_type", "license_plate", "vehicle_registration_number",
+            "drivers_license_number", "license_issue_date", "license_expiry_date",
+            "emergency_contact_name", "emergency_contact_phone",
+            "drivers_license_document", "vehicle_registration_document", "insurance_document", "national_id_document",
+            "status", "submitted_at", "reviewed_at", "reviewed_by", "rejection_reason", "admin_notes",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["submitted_at", "reviewed_at", "reviewed_by", "created_at", "updated_at"]
+
+    def validate_rider_id(self, value):
+        """Validate that the rider exists and doesn't already have KYC submitted."""
+        try:
+            rider = Rider.objects.get(id=value)
+            if hasattr(rider, 'kyc'):
+                raise serializers.ValidationError("KYC already submitted for this rider")
+            return value
+        except Rider.DoesNotExist:
+            raise serializers.ValidationError("Rider not found")
+
+    def create(self, validated_data):
+        rider_id = validated_data.pop("rider_id")
+        try:
+            rider = Rider.objects.get(id=rider_id)
+        except Rider.DoesNotExist:
+            raise serializers.ValidationError({"rider_id": "Rider not found"})
+
+        # Double-check in case validation was bypassed
+        if RiderKYC.objects.filter(rider=rider).exists():
+            raise serializers.ValidationError({"rider_id": "KYC already submitted for this rider"})
+
+        validated_data["rider"] = rider
+        return RiderKYC.objects.create(**validated_data)

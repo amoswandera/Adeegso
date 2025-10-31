@@ -18,9 +18,13 @@ export default function Login() {
       if (result.success) {
         // Login successful - AuthContext handles redirection
         return
+      } else {
+        // Display the specific error message from the login function
+        setError(result.error || 'Login failed')
       }
     } catch (err) {
-      setError('Login failed')
+      // Fallback error message
+      setError('An unexpected error occurred. Please try again.')
     }
   }
 

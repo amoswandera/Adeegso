@@ -115,9 +115,10 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(product)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
-    def pending_approval(self, request):
-        """Get products pending approval (admin only)"""
+    @action(detail=True, methods=['patch'])
+    def toggle_active(self, request, pk=None):
+        """Toggle product active status (admin only)"""
+        product = self.get_object()
         user = request.user
 
         # Check if user is admin
@@ -127,10 +128,14 @@ class ProductViewSet(viewsets.ModelViewSet):
             role = None
 
         if not (user.is_superuser or role == 'admin'):
-            raise permissions.PermissionDenied("Only administrators can view pending approvals")
+            raise permissions.PermissionDenied("Only administrators can toggle product active status")
 
-        products = self.get_queryset().filter(approval_status='pending')
-        serializer = self.get_serializer(products, many=True)
+        # Toggle the active status
+        product.active = not product.active
+        product.save()
+
+        # Return updated product data
+        serializer = self.get_serializer(product)
         return Response(serializer.data)
 
     def perform_destroy(self, instance):

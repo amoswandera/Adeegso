@@ -1,9 +1,9 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
 export const api = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
+  baseURL: API_BASE_URL,
 })
 
 // Request interceptor to add auth token
@@ -81,8 +81,43 @@ export async function updateProduct(productId, payload) {
   return data
 }
 
-export async function deleteProduct(productId) {
-  const { data } = await api.delete(`/products/${productId}/`)
+export async function fetchVendorProducts(params) {
+  const { data } = await api.get('/vendor/products/', { params })
+  return data
+}
+
+export async function createVendorProduct(payload) {
+  const { data } = await api.post('/vendor/products/', payload)
+  return data
+}
+
+export async function updateVendorProduct(productId, payload) {
+  const { data } = await api.patch(`/vendor/products/${productId}/`, payload)
+  return data
+}
+
+export async function deleteVendorProduct(productId) {
+  const { data } = await api.delete(`/vendor/products/${productId}/`)
+  return data
+}
+
+export async function approveVendorProduct(productId) {
+  const { data } = await api.post(`/vendor/products/${productId}/approve/`)
+  return data
+}
+
+export async function approveProduct(productId) {
+  const { data } = await api.post(`/products/${productId}/approve/`)
+  return data
+}
+
+export async function rejectProduct(productId, reason = '') {
+  const { data } = await api.post(`/products/${productId}/reject/`, { reason })
+  return data
+}
+
+export async function toggleProductActive(productId) {
+  const { data } = await api.patch(`/products/${productId}/toggle_active/`)
   return data
 }
 

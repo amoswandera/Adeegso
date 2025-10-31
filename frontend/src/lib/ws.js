@@ -1,36 +1,45 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+import { webSocketService } from '../services/api'
 
 /**
- * Convert HTTP URL to WebSocket URL
+ * Legacy function for backward compatibility
+ * @deprecated Use webSocketService directly instead
  */
-function toWsUrl(path) {
-  // Convert http(s)://host to ws(s)://host and append path (no /api prefix)
-  const url = new URL(API_BASE_URL)
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  // Channels routes are served at root (no /api)
-  return `${url.protocol}//${url.host}${path}`
-}
-
 export function connectOrders(onMessage) {
-  const ws = new WebSocket(toWsUrl('/ws/orders/'))
-  ws.onmessage = (evt) => {
-    try {
-      const data = JSON.parse(evt.data)
-      onMessage?.(data)
-    } catch {}
+  // Connect as customer by default
+  webSocketService.connect('customer')
+
+  // Set up message handler
+  const unsubscribe = webSocketService.on('onOrderStatusChanged', onMessage)
+
+  return {
+    close: () => {
+      unsubscribe()
+      webSocketService.disconnect()
+    }
   }
-  return ws
 }
 
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use webSocketService directly instead
+ */
 export function connectOrderDetail(orderId, onMessage) {
-  const ws = new WebSocket(toWsUrl(`/ws/orders/${orderId}/`))
-  ws.onmessage = (evt) => {
-    try {
-      const data = JSON.parse(evt.data)
-      onMessage?.(data)
-    } catch {}
+  // Connect as customer by default
+  webSocketService.connect('customer')
+
+  // Set up message handler for specific order
+  const unsubscribe = webSocketService.on('onOrderStatusChanged', (orderIdFromWS, status) => {
+    if (orderIdFromWS === orderId) {
+      onMessage({ order_id: orderId, status })
+    }
+  })
+
+  return {
+    close: () => {
+      unsubscribe()
+      webSocketService.disconnect()
+    }
   }
-  return ws
 }
 
 /**
@@ -39,17 +48,25 @@ export function connectOrderDetail(orderId, onMessage) {
  * @returns {WebSocket} WebSocket connection
  */
 export function connectAdminDashboard(onMessage) {
-  const ws = new WebSocket(toWsUrl('/ws/admin/dashboard/'))
-  ws.onmessage = (evt) => {
-    try {
-      const data = JSON.parse(evt.data)
-      onMessage?.(data)
-    } catch (e) {
-      console.error('Error parsing WebSocket message:', e)
+  // Use the new WebSocket service
+  webSocketService.connect('admin')
+
+  // Set up message handlers
+  const unsubscribeAnalytics = webSocketService.on('onOrderUpdated', (data) => {
+    if (data.type === 'analytics_update') {
+      onMessage(data)
+    }
+  })
+
+  const unsubscribeError = webSocketService.on('onAuthError', (data) => {
+    onMessage({ type: 'error', message: data.message })
+  })
+
+  return {
+    close: () => {
+      unsubscribeAnalytics()
+      unsubscribeError()
+      webSocketService.disconnect()
     }
   }
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error)
-  }
-  return ws
 }

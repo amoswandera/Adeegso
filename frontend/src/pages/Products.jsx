@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { fetchProducts } from '../lib/api'
+import { customerAPI } from '../services/api'
 import { Link } from 'react-router-dom'
 
 const ProductCard = ({ product }) => {
@@ -47,8 +47,8 @@ export default function Products() {
 
   useEffect(() => {
     setLoading(true)
-    fetchProducts()
-      .then(setProducts)
+    customerAPI.getProducts()
+      .then(response => setProducts(response.data || response))
       .catch((error) => {
         console.error('Error fetching products:', error)
         // Fallback to mock data if API fails

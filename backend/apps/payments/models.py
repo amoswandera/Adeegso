@@ -37,6 +37,3 @@ class AuditLog(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-from django.db import models
-
-# Create your models here.

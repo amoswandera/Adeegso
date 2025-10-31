@@ -42,6 +42,3 @@ class Product(models.Model):
         self.approved_at = timezone.now()
         self.rejection_reason = reason
         self.save()
-from django.db import models
-
-# Create your models here.

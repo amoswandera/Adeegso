@@ -21,25 +21,27 @@ export const WebSocketProvider = ({ children }) => {
 
     // Create a new WebSocket connection based on user role
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let wsUrl;
+    const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8000/ws';
 
+    let endpoint = '';
     switch (user.role) {
       case 'vendor':
-        wsUrl = `${protocol}//localhost:8000/ws/vendor/`;
+        endpoint = '/vendor/orders/';
         break;
       case 'admin':
-        wsUrl = `${protocol}//localhost:8000/ws/admin/dashboard/`;
+        endpoint = '/admin/dashboard/';
         break;
       case 'rider':
-        wsUrl = `${protocol}//localhost:8000/ws/orders/`;
+        endpoint = '/rider/orders/';
         break;
       default:
-        wsUrl = `${protocol}//localhost:8000/ws/orders/`;
+        endpoint = '/customer/orders/';
     }
 
-    console.log(`Connecting to WebSocket: ${wsUrl} for role: ${user.role}`);
+    const fullWsUrl = `${wsUrl}${endpoint}`;
+    console.log(`Connecting to WebSocket: ${fullWsUrl} for role: ${user.role}`);
     try {
-      ws.current = new WebSocket(wsUrl);
+      ws.current = new WebSocket(fullWsUrl);
 
       ws.current.onopen = () => {
         console.log('WebSocket Connected');
@@ -58,16 +60,17 @@ export const WebSocketProvider = ({ children }) => {
         console.log('WebSocket Disconnected', e);
         ws.current = null;
 
-        // Don't attempt to reconnect for now - WebSocket implementation needs backend work
+        // Attempt to reconnect
         if (isAuthenticated && user?.role && reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current += 1;
-          console.log('WebSocket connection failed - this is expected until backend WebSocket is fully implemented');
+          console.log(`Attempting to reconnect... (${reconnectAttempts.current}/${maxReconnectAttempts})`);
+          setTimeout(() => connect(), 5000);
         }
       };
 
       ws.current.onerror = (error) => {
         console.error('WebSocket Error:', error);
-        // Don't show error for now - WebSocket implementation is incomplete
+        // WebSocket error - will attempt to reconnect
       };
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error);
@@ -76,10 +79,10 @@ export const WebSocketProvider = ({ children }) => {
 
   // Handle initial connection and reconnection when auth state changes
   useEffect(() => {
-    // Temporarily disable WebSocket connection until backend is fully implemented
-    // if (isAuthenticated && user?.role) {
-    //   connect();
-    // } else {
+    // Enable WebSocket connection now that backend is implemented
+    if (isAuthenticated && user?.role) {
+      connect();
+    } else {
       // Clean up on logout or when user role is not available
       if (ws.current) {
         ws.current.close();
@@ -89,7 +92,7 @@ export const WebSocketProvider = ({ children }) => {
         clearTimeout(reconnectTimeout.current);
         reconnectTimeout.current = null;
       }
-    // }
+    }
 
     // Cleanup function
     return () => {
@@ -162,8 +165,12 @@ export const WebSocketProvider = ({ children }) => {
     sendMessage,
     subscribeToOrderUpdates,
     connect: () => {
-      // Manual connect function - can be called when WebSocket is needed
-      console.log('WebSocket connection manually requested - currently disabled until backend implementation is complete');
+      // Manual connect function - now enabled
+      if (isAuthenticated && user?.role) {
+        connect();
+      } else {
+        console.log('Cannot connect to WebSocket - user not authenticated or no role assigned');
+      }
     }
   };
 

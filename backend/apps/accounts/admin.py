@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
-from .models import Account, Vendor, Rider
+from .models import Account, Vendor, Rider, Wallet
 from core.admin import marketplace_admin
 
 
@@ -86,16 +86,25 @@ class VendorAdmin(admin.ModelAdmin):
 
 @admin.register(Rider)
 class RiderAdmin(admin.ModelAdmin):
-    list_display = ('user', 'verified', 'wallet_balance', 'created_at')
+    list_display = ('user', 'verified', 'get_wallet_balance', 'created_at')
     list_filter = ('verified', 'created_at')
     search_fields = ('user__username', 'user__email')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'get_wallet_balance')
     fieldsets = (
         ('Rider Information', {
             'fields': ('user', 'verified')
         }),
         ('Financial Information', {
-            'fields': ('wallet_balance',)
+            'fields': ('get_wallet_balance',),
+            'classes': ('collapse',)
+        }),
+        ('Vehicle Information', {
+            'fields': ('vehicle_type', 'license_plate'),
+            'classes': ('collapse',)
+        }),
+        ('Location & Status', {
+            'fields': ('current_latitude', 'current_longitude', 'last_location_update', 'is_online'),
+            'classes': ('collapse',)
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -103,6 +112,14 @@ class RiderAdmin(admin.ModelAdmin):
         }),
     )
     actions = ['verify_riders', 'unverify_riders']
+
+    def get_wallet_balance(self, obj):
+        """Display wallet balance in admin"""
+        try:
+            return f"${obj.wallet_balance:.2f}"
+        except:
+            return "$0.00"
+    get_wallet_balance.short_description = 'Wallet Balance'
 
     def verify_riders(self, request, queryset):
         queryset.update(verified=True)

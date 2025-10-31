@@ -139,6 +139,19 @@ export const setOrderStatus = async (orderId, status) => {
 
 // End of general API
 
+// Rider Profile API
+export const riderProfileAPI = {
+  getProfile: () => api.get('/rider/profile/'),
+  updateProfile: (data) => {
+    console.log('Updating profile with data:', data);
+    return api.patch('/rider/profile/', data, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  },
+};
+
 // Vendor API
 export const vendorAPI = {
   getVendorProfile: () => api.get('/vendor/profile/'),
@@ -225,8 +238,12 @@ class WebSocketService {
       onOrderCreated: [],
       onOrderUpdated: [],
       onOrderStatusChanged: [],
+      onAuthSuccess: [],
+      onAuthError: [],
     };
     this.wsUrl = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8000/ws';
+    this.userRole = null;
+    this.userId = null;
   }
 
   async requestNotificationPermission() {
@@ -256,19 +273,41 @@ class WebSocketService {
     }
   }
 
-  connect() {
+  connect(userRole = 'customer', userId = null) {
     if (this.socket) return;
+
+    this.userRole = userRole;
+    this.userId = userId;
 
     const { access } = getAuthTokens();
     if (!access) return;
 
+    // Choose WebSocket endpoint based on user role
+    let endpoint = '';
+    switch (userRole) {
+      case 'admin':
+        endpoint = '/ws/admin/dashboard/';
+        break;
+      case 'customer':
+        endpoint = '/ws/customer/orders/';
+        break;
+      case 'vendor':
+        endpoint = '/ws/vendor/orders/';
+        break;
+      case 'rider':
+        endpoint = '/ws/rider/orders/';
+        break;
+      default:
+        endpoint = '/ws/customer/orders/';
+    }
+
     // Use the configured WebSocket URL
-    const wsUrl = this.wsUrl;
+    const wsUrl = `${this.wsUrl}${endpoint}`;
 
     this.socket = new WebSocket(wsUrl);
 
     this.socket.onopen = () => {
-      console.log('WebSocket connected');
+      console.log(`WebSocket connected for ${userRole}`);
       // Authenticate with the token
       this.socket.send(JSON.stringify({
         type: 'auth',
@@ -282,10 +321,10 @@ class WebSocketService {
     };
 
     this.socket.onclose = () => {
-      console.log('WebSocket disconnected');
+      console.log(`WebSocket disconnected for ${userRole}`);
       this.socket = null;
       // Try to reconnect after 5 seconds
-      setTimeout(() => this.connect(), 5000);
+      setTimeout(() => this.connect(userRole, userId), 5000);
     };
   }
 
@@ -315,6 +354,16 @@ class WebSocketService {
           this.showNotification('Order Status Updated', `Order #${data.order_id} status changed to ${data.status}.`, `/orders/${data.order_id}`);
         }
         break;
+      case 'auth_success':
+        this.callbacks.onAuthSuccess.forEach(callback => callback(data));
+        break;
+      case 'auth_error':
+        this.callbacks.onAuthError.forEach(callback => callback(data));
+        break;
+      case 'analytics_update':
+        // Handle admin analytics updates
+        this.callbacks.onOrderUpdated.forEach(callback => callback(data));
+        break;
       default:
         console.log('Unknown message type:', data.type);
     }
@@ -334,12 +383,72 @@ class WebSocketService {
   }
 }
 
+// Export a singleton instance
+export const webSocketService = new WebSocketService();
+// General Products API for customers
+export const customerAPI = {
+  getProducts: (params) => {
+    console.log('Fetching products for customers with params:', params)
+    return api.get('/products/', { params })
+      .then(response => {
+        console.log('Products fetched successfully:', response.data)
+        return response
+      })
+      .catch(error => {
+        console.error('Failed to fetch products:', error.response?.status, error.response?.data)
+        throw error
+      })
+  },
+  getProduct: (id) => {
+    console.log('Fetching product details for ID:', id)
+    return api.get(`/products/${id}/`)
+      .then(response => {
+        console.log('Product details fetched successfully:', response.data)
+        return response
+      })
+      .catch(error => {
+        console.error('Failed to fetch product details:', error.response?.status, error.response?.data)
+        throw error
+      })
+  },
+};
+
+// Rider Wallet API
+export const riderWalletAPI = {
+  getBalance: () => api.get('/rider/wallet/balance/'),
+  getTransactions: () => api.get('/rider/wallet/transactions/'),
+  requestWithdrawal: (amount) => api.post('/rider/wallet/withdraw/', { amount }),
+};
+
 // Rider Delivery API
 export const riderDeliveryAPI = {
   getAvailableDeliveries: () => api.get('/rider/deliveries/'),
-  getMyDeliveries: () => api.get('/rider/deliveries/'), // This will be filtered by rider permissions
+  getMyDeliveries: () => api.get('/rider/deliveries/my_deliveries/'),
   acceptDelivery: (deliveryId) => api.post(`/rider/deliveries/${deliveryId}/accept/`),
+  rejectDelivery: (deliveryId) => api.post(`/rider/deliveries/${deliveryId}/reject/`),
   updateDeliveryStatus: (deliveryId, status) => api.post(`/rider/deliveries/${deliveryId}/update_status/`, { status }),
-  getDeliveryDetails: (deliveryId) => api.get(`/rider/deliveries/${deliveryId}/`),
+  updateLocation: (location) => api.post('/rider/deliveries/update_location/', location),
+  setOnlineStatus: (data) => api.post('/rider/deliveries/set_online_status/', data),
 };
 
+// Vendor KYC API
+export const vendorKYCAPI = {
+  submitKYC: (kycData) => api.post('/vendor/kyc/submit/', kycData),
+  getKYCStatus: () => api.get('/vendor/kyc/status/'),
+  getPendingKYC: () => api.get('/admin/kyc/pending/'),
+  getKYCDetail: (kycId) => api.get(`/admin/kyc/${kycId}/`),
+  approveKYC: (kycId) => api.post(`/admin/kyc/${kycId}/approve/`),
+  rejectKYC: (kycId, reason) => api.post(`/admin/kyc/${kycId}/reject/`, { reason }),
+  requestKYCChanges: (kycId, notes) => api.post(`/admin/kyc/${kycId}/request-changes/`, { notes }),
+};
+
+// Rider KYC API
+export const riderKYCAPI = {
+  submitKYC: (kycData) => api.post('/rider/kyc/submit/', kycData),
+  getKYCStatus: () => api.get('/rider/kyc/status/'),
+  getPendingKYC: () => api.get('/admin/rider-kyc/pending/'),
+  getKYCDetail: (kycId) => api.get(`/admin/rider-kyc/${kycId}/`),
+  approveKYC: (kycId) => api.post(`/admin/rider-kyc/${kycId}/approve/`),
+  rejectKYC: (kycId, reason) => api.post(`/admin/rider-kyc/${kycId}/reject/`, { reason }),
+  requestKYCChanges: (kycId, notes) => api.post(`/admin/rider-kyc/${kycId}/request-changes/`, { notes }),
+};

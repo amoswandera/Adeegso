@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { FiPackage, FiCheck, FiClock, FiTruck, FiCheckCircle, FiXCircle, FiSearch, FiPhone, FiMapPin } from 'react-icons/fi';
 import { vendorAPI } from '../../services/api';
+import { webSocketService } from '../../services/api';
 
 const statusColors = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -167,59 +168,9 @@ const Orders = () => {
       try {
         setIsLoading(true);
 
-        // Temporarily disable API calls - show mock data instead
-        console.log('Vendor orders - API calls disabled for testing');
-
-        // Mock orders data
-        const mockOrders = [
-          {
-            id: 'ORD-001',
-            status: 'pending',
-            orderTime: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            total: 45.99,
-            subtotal: 42.99,
-            deliveryFee: 3.00,
-            customer: {
-              name: 'John Doe',
-              phone: '+252 70 123 4567',
-              email: 'john@example.com'
-            },
-            deliveryAddress: '123 Main St, Mogadishu, Somalia',
-            items: [
-              { id: 1, name: 'Grilled Chicken Burger', price: 12.99, quantity: 2, notes: 'Extra spicy' },
-              { id: 2, name: 'Caesar Salad', price: 8.99, quantity: 1, notes: 'No croutons' },
-              { id: 3, name: 'Coca Cola', price: 2.00, quantity: 2, notes: '' }
-            ],
-            statusHistory: [
-              { status: 'pending', time: new Date(Date.now() - 30 * 60 * 1000).toISOString(), label: 'Order Placed' }
-            ]
-          },
-          {
-            id: 'ORD-002',
-            status: 'processing',
-            orderTime: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-            total: 32.50,
-            subtotal: 29.50,
-            deliveryFee: 3.00,
-            customer: {
-              name: 'Jane Smith',
-              phone: '+252 70 987 6543',
-              email: 'jane@example.com'
-            },
-            deliveryAddress: '456 Oak Ave, Hargeisa, Somalia',
-            items: [
-              { id: 4, name: 'Caesar Salad', price: 8.99, quantity: 1, notes: 'Extra dressing' },
-              { id: 5, name: 'Chocolate Lava Cake', price: 6.99, quantity: 2, notes: '' },
-              { id: 6, name: 'Orange Juice', price: 3.50, quantity: 1, notes: 'Fresh squeezed' }
-            ],
-            statusHistory: [
-              { status: 'pending', time: new Date(Date.now() - 90 * 60 * 1000).toISOString(), label: 'Order Placed' },
-              { status: 'processing', time: new Date(Date.now() - 60 * 60 * 1000).toISOString(), label: 'Processing' }
-            ]
-          }
-        ];
-
-        setOrders(mockOrders);
+        // Fetch real orders from API
+        const response = await vendorAPI.getOrders();
+        setOrders(response.data || []);
 
       } catch (error) {
         console.error('Error fetching orders:', error);
@@ -231,12 +182,39 @@ const Orders = () => {
     };
 
     fetchOrders();
+
+    // Set up WebSocket connection for real-time updates
+    webSocketService.connect('vendor');
+
+    // Listen for order status updates
+    const unsubscribe = webSocketService.on('onOrderStatusChanged', (orderId, newStatus) => {
+      setOrders(prevOrders =>
+        prevOrders.map(order =>
+          order.id === orderId
+            ? {
+                ...order,
+                status: newStatus,
+                statusHistory: [
+                  ...(order.statusHistory || []),
+                  { status: newStatus, time: new Date().toISOString() }
+                ]
+              }
+            : order
+        )
+      );
+    });
+
+    // Cleanup WebSocket connection
+    return () => {
+      unsubscribe();
+      webSocketService.disconnect();
+    };
   }, []);
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
-      // Temporarily disable API calls
-      console.log('Order status update disabled for testing');
+      // Update order status via API
+      await vendorAPI.updateOrderStatus(orderId, newStatus);
 
       // Update local state
       setOrders(prevOrders =>
@@ -254,7 +232,7 @@ const Orders = () => {
         )
       );
 
-      alert(`Order status updated to ${newStatus} (mock data)`);
+      alert(`Order status updated to ${newStatus}`);
     } catch (error) {
       console.error('Error updating order status:', error);
       alert('Failed to update order status. Please try again.');

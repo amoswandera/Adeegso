@@ -50,6 +50,7 @@ export default function AdminLayout() {
             <Link to="/admin/orders" className={`px-3 py-2 rounded ${isActive('/admin/orders') ? 'bg-brand-blue text-white' : 'text-brand-blue hover:bg-brand-white'}`} onClick={() => setSidebarOpen(false)}>Orders</Link>
             <Link to="/admin/vendors" className={`px-3 py-2 rounded ${isActive('/admin/vendors') ? 'bg-brand-blue text-white' : 'text-brand-blue hover:bg-brand-white'}`} onClick={() => setSidebarOpen(false)}>Vendors</Link>
             <Link to="/admin/riders" className={`px-3 py-2 rounded ${isActive('/admin/riders') ? 'bg-brand-blue text-white' : 'text-brand-blue hover:bg-brand-white'}`} onClick={() => setSidebarOpen(false)}>Riders</Link>
+            <Link to="/admin/kyc" className={`px-3 py-2 rounded ${isActive('/admin/kyc') ? 'bg-brand-blue text-white' : 'text-brand-blue hover:bg-brand-white'}`} onClick={() => setSidebarOpen(false)}>KYC Management</Link>
             <Link to="/admin/payments" className={`px-3 py-2 rounded ${isActive('/admin/payments') ? 'bg-brand-blue text-white' : 'text-brand-blue hover:bg-brand-white'}`} onClick={() => setSidebarOpen(false)}>Payments</Link>
             <Link to="/admin/profile" className={`px-3 py-2 rounded ${isActive('/admin/profile') ? 'bg-brand-blue text-white' : 'text-brand-blue hover:bg-brand-white'}`} onClick={() => setSidebarOpen(false)}>Profile</Link>
           </nav>

@@ -5,6 +5,8 @@ import { AuthProvider, useAuth, AuthContext } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import './styles.css';
 
 // Auth & Core
@@ -18,10 +20,16 @@ import Cart from './pages/Cart';
 import Shop from './pages/Shop';
 import OrderTracking from './pages/OrderTracking';
 
+// KYC Components
+import KYCSubmission from './pages/KYCSubmission';
+import KYCStatus from './pages/KYCStatus';
+import AdminKYC from './pages/AdminKYC';
+
 // Admin
 import AdminLayout from './pages/AdminLayout';
 import AdminDashboard from './pages/Admin';
 import AdminOrders from './pages/AdminOrders';
+import AdminProducts from './pages/AdminProducts';
 import AdminVendors from './pages/AdminVendors';
 import AdminRiders from './pages/AdminRiders';
 import AdminPayments from './pages/AdminPayments';
@@ -149,6 +157,17 @@ function Layout({ children }) {
       </header>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}
+        <ToastContainer 
+          position="top-right"
+          autoClose={5000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+        />
       </main>
       <footer className="bg-white border-t border-gray-200 mt-12">
         <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
@@ -210,6 +229,7 @@ function App() {
               }>
                 <Route index element={<AdminDashboard />} />
                 <Route path="dashboard" element={<AdminDashboard />} />
+                <Route path="products" element={<AdminProducts />} />
                 <Route path="orders" element={<AdminOrders />} />
                 <Route path="vendors" element={<AdminVendors />} />
                 <Route path="vendors/new" element={<AdminCreateVendor />} />
@@ -218,6 +238,7 @@ function App() {
                 <Route path="payments" element={<AdminPayments />} />
                 <Route path="users" element={<AdminUsers />} />
                 <Route path="users/new" element={<AdminCreateUser />} />
+                <Route path="kyc" element={<AdminKYC />} />
                 <Route path="profile" element={<AdminProfile />} />
               </Route>
               
@@ -231,6 +252,8 @@ function App() {
                 <Route path="customers" element={<VendorCustomers />} />
                 <Route path="earnings" element={<VendorEarnings />} />
                 <Route path="settings" element={<VendorSettings />} />
+                <Route path="kyc/submit" element={<KYCSubmission />} />
+                <Route path="kyc/status" element={<KYCStatus />} />
               </Route>
               
               {/* Rider Routes */}

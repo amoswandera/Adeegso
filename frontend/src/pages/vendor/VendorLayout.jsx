@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet, useOutletContext } from 'react-router-dom';
-import { FiMenu, FiX, FiHome, FiPackage, FiBarChart2, FiUsers, FiDollarSign, FiSettings, FiLogOut } from 'react-icons/fi';
+import { FiMenu, FiX, FiHome, FiPackage, FiBarChart2, FiUsers, FiDollarSign, FiSettings, FiLogOut, FiFileText } from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
 import { vendorAPI } from '../../services/api';
 
@@ -76,6 +76,7 @@ const VendorLayout = ({ children }) => {
     { name: 'Analytics', href: '/vendor/analytics', icon: FiBarChart2 },
     { name: 'Customers', href: '/vendor/customers', icon: FiUsers },
     { name: 'Earnings', href: '/vendor/earnings', icon: FiDollarSign },
+    { name: 'KYC Verification', href: '/vendor/kyc/status', icon: FiFileText },
     { name: 'Settings', href: '/vendor/settings', icon: FiSettings },
   ];
 
